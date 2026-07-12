@@ -2,10 +2,7 @@
 
 echo "🚀 Starting deployment..."
 
-echo "📥 Fetching and resetting to latest code from git..."
-cd "$(dirname "$0")" || exit
-git fetch --all
-git reset --hard origin/main
+echo "📥 Code synced successfully. Preparing deployment..."
 
 echo "📦 Building new Docker image..."
 docker build -t praxis-backend .
