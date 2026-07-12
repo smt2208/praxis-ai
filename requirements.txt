@@ -1,0 +1,71 @@
+# ============================================================
+# Core Framework & Agent (LangChain 1.0 line)
+# langchain-core moves fast — floor it to langchain's own
+# constraint instead of hard-pinning, then lock the resolved
+# version with `pip freeze` after install.
+# ============================================================
+langchain==1.3.12
+langchain-core>=1.4.9,<2.0.0
+langgraph==1.2.8
+langchain-openai==1.3.3
+langchain-google-genai==4.2.7
+
+# ============================================================
+# API & Validation
+# ============================================================
+fastapi[standard]==0.139.0
+uvicorn[standard]>=0.35
+pydantic==2.13.4
+pydantic-settings>=2.14
+python-multipart>=0.0.20
+
+# ============================================================
+# Database & ORM
+# [asyncio] extra is required now — greenlet no longer installs
+# by default with SQLAlchemy, so async engines fail without it.
+# ============================================================
+SQLAlchemy[asyncio]==2.0.51
+asyncpg>=0.31
+alembic==1.18.5
+
+# ============================================================
+# Authentication
+# passlib[bcrypt] is unmaintained and breaks with bcrypt>=4.0
+# (AttributeError: module 'bcrypt' has no attribute '__about__').
+# Call bcrypt directly instead — see hash/verify snippet below.
+# ============================================================
+PyJWT==2.13.0
+bcrypt==5.0.0
+
+# ============================================================
+# Vector DB & Search
+# langchain-qdrant 1.x now requires Python >=3.10
+# ============================================================
+qdrant-client==1.18.0
+langchain-qdrant==1.1.0
+langchain-tavily>=0.2
+fastembed>=0.7
+
+# ============================================================
+# Document Processing & Storage
+# llama-parse is deprecated (maintenance ended May 2026) —
+# replaced with llama-cloud. Update imports from
+# `llama_parse` / `llama_cloud_services` to `llama_cloud`.
+#
+# Do NOT pin boto3 separately — aioboto3 pins a narrow
+# aiobotocore->botocore range and an independent boto3 pin
+# will trigger a resolver conflict. Request boto3 via the
+# aioboto3 extra if you need it directly.
+# ============================================================
+llama-cloud==2.10.0
+aioboto3[boto3]==15.5.0
+
+# ============================================================
+# Utilities
+# ============================================================
+python-dotenv>=1.2
+tqdm>=4.67
+fpdf2>=2.8
+aiofiles==23.2.1
+matplotlib>=3.8.0
+pandas>=2.2.0

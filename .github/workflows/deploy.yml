@@ -1,0 +1,27 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main # Triggers deployment when you push to the 'main' branch
+
+jobs:
+  deploy:
+    name: Deploy to AWS EC2
+    runs-on: self-hosted # Runs directly on your EC2 instance!
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4 # Automatically fetches the latest code safely without PATs!
+
+      - name: Sync Files to Project Folder
+        run: |
+          echo "Copying latest files to ~/praxis-ai..."
+          mkdir -p ~/praxis-ai
+          rsync -av --delete --exclude='.git' ./ ~/praxis-ai/
+
+      - name: Run Deployment Script
+        run: |
+          echo "🚀 Starting local deployment from ~/praxis-ai..."
+          cd ~/praxis-ai
+          bash deploy.sh
