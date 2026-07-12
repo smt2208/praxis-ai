@@ -117,4 +117,4 @@ uvicorn main:app --reload
 *Built with LangChain · LangGraph · FastAPI · Qdrant · PostgreSQL · AWS S3*
 
 
-#check for cicdvvv
+#check for cicd
