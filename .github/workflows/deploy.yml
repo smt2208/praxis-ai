@@ -18,7 +18,7 @@ jobs:
         run: |
           echo "Copying latest files to ~/praxis-ai..."
           mkdir -p ~/praxis-ai
-          rsync -av --delete --exclude='.git' ./ ~/praxis-ai/
+          rsync -av --delete --exclude='.git' --exclude='.env' ./ ~/praxis-ai/
 
       - name: Run Deployment Script
         run: |
