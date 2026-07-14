@@ -8,6 +8,7 @@ from src.schemas.chat import ConversationCreate, ConversationResponse, MessageCr
 from src.services.chat_service import (
     create_conversation,
     delete_conversation,
+    get_conversation_messages,
     get_user_conversations,
     process_chat_message,
     stream_chat_message,
@@ -44,6 +45,18 @@ async def delete_conversation_route(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500, detail="Unable to delete the conversation")
+
+
+@router.get("/conversations/{conversation_id}/messages", response_model=List[MessageResponse])
+async def list_messages(
+    conversation_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await get_conversation_messages(db, current_user.id, conversation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
 async def send_message(

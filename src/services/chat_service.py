@@ -67,6 +67,18 @@ async def get_user_conversations(db: AsyncSession, user_id: uuid.UUID):
     result = await db.execute(select(Conversation).where(Conversation.user_id == user_id).order_by(Conversation.created_at.desc()))
     return result.scalars().all()
 
+
+async def get_conversation_messages(
+    db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID
+):
+    await ensure_conversation_access(db, user_id, conversation_id)
+    result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc())
+    )
+    return result.scalars().all()
+
 async def delete_conversation(db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID):
     conversation = await ensure_conversation_access(db, user_id, conversation_id)
     
