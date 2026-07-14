@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_tavily import TavilySearch
 from langchain_core.runnables import RunnableConfig
 from src.core.config import settings
 from src.agent.document import get_retriever
@@ -14,7 +14,7 @@ import glob
 os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 
 # Instantiate Tavily tool
-tavily_search = TavilySearchResults(max_results=3)
+tavily_search = TavilySearch(max_results=3)
 
 @tool
 def generate_and_upload_document(content: str, file_type: str = "txt") -> str:

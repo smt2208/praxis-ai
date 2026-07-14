@@ -12,7 +12,7 @@ from src.agent.prompts import (
 )
 from src.core.config import settings
 from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
 import json
 
@@ -27,7 +27,7 @@ class AgentState(TypedDict):
 def get_llm(model_name: str):
     if "gemini" in model_name.lower():
         model_id = "gemini-1.5-flash" if "flash" in model_name.lower() else model_name
-        return ChatGoogleGenAI(model=model_id, api_key=settings.google_api_key)
+        return ChatGoogleGenerativeAI(model=model_id, google_api_key=settings.google_api_key)
     else:
         return ChatOpenAI(model=model_name, api_key=settings.openai_api_key)
 
