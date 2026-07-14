@@ -7,8 +7,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams
 import os
 
-# Initialize LlamaCloud
-client = AsyncLlamaCloud(token=settings.llama_cloud_api_key)
+# Initialize LlamaCloud (llama-cloud v2.x uses api_key=, not token=)
+client = AsyncLlamaCloud(api_key=settings.llama_cloud_api_key)
 
 # Initialize Qdrant Client
 qdrant_client = QdrantClient(
