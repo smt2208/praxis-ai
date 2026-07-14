@@ -87,7 +87,7 @@ async def supervisor_agent(state: AgentState):
         final_response = await llm.ainvoke([sys_msg] + state["messages"])
         return {"messages": [final_response], "active_agent": "supervisor"}
         
-    choice = await router.ainvoke([sys_msg] + state["messages"])
+    choice = await router.ainvoke([sys_msg] + state["messages"], config={"tags": ["router"]})
     
     if choice["next_agent"] == "FINISH":
         # Just chat normally — include sys_msg for consistent AI persona

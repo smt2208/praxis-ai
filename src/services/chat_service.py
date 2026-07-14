@@ -118,10 +118,11 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
         async for event in agent_executor.astream_events(state, config=config, version="v2"):
             kind = event["event"]
             if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
-                if content and isinstance(content, str):
-                    ai_response_chunks.append(content)
-                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                if "router" not in event.get("tags", []):
+                    content = event["data"]["chunk"].content
+                    if content and isinstance(content, str):
+                        ai_response_chunks.append(content)
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
                 # Capture the final graph output state
                 final_state = event["data"].get("output")
