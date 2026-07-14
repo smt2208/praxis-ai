@@ -29,7 +29,6 @@ class ConversationResponse(BaseModel):
     user_id: UUID
     title: str
     created_at: datetime
-    messages: List[MessageResponse] = []
 
     class Config:
         from_attributes = True
