@@ -25,9 +25,15 @@ app = FastAPI(
 )
 
 # CORS middleware
+# NOTE: allow_origins=["*"] with allow_credentials=True is rejected by browsers.
+# List your frontend URL(s) here. For development, localhost is included.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://localhost:3000",   # React dev server
+        "*",                       # TODO: Replace with your production frontend URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

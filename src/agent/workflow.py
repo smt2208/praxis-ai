@@ -83,15 +83,15 @@ async def supervisor_agent(state: AgentState):
     # If the last message was a tool execution, we must synthesize the final answer
     last_message = state["messages"][-1]
     if isinstance(last_message, ToolMessage):
-        # Synthesize final response
-        final_response = await llm.ainvoke(state["messages"])
+        # Synthesize final response — include sys_msg so the AI has its persona
+        final_response = await llm.ainvoke([sys_msg] + state["messages"])
         return {"messages": [final_response], "active_agent": "supervisor"}
         
     choice = await router.ainvoke([sys_msg] + state["messages"])
     
     if choice["next_agent"] == "FINISH":
-        # Just chat normally
-        final_response = await llm.ainvoke(state["messages"])
+        # Just chat normally — include sys_msg for consistent AI persona
+        final_response = await llm.ainvoke([sys_msg] + state["messages"])
         return {"messages": [final_response], "active_agent": "supervisor"}
     
     # Otherwise, return nothing to messages, just update active_agent so the router knows where to go

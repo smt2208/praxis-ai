@@ -3,8 +3,10 @@ Configuration management using Pydantic settings.
 Loads environment variables and provides validated config access.
 """
 from pydantic_settings import BaseSettings
+from pydantic import SecretStr
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote_plus
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -19,7 +21,7 @@ class Settings(BaseSettings):
     
     # PostgreSQL Configuration
     postgres_user: str = "postgres"
-    postgres_password: str = "password"
+    postgres_password: SecretStr = SecretStr("password")  # SecretStr safely handles special chars like $
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "multimodal_rag"
@@ -48,12 +50,24 @@ class Settings(BaseSettings):
     
     @property
     def database_url(self) -> str:
-        """Construct the asyncpg database URL."""
-        return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        """
+        Construct the asyncpg database URL.
+        URL-encodes the password to safely handle special characters
+        like #, $, @, % that would otherwise break the connection string.
+        """
+        password = quote_plus(self.postgres_password.get_secret_value())
+        return (
+            f"postgresql+asyncpg://{self.postgres_user}:{password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = {
+        # Look for .env in project root (works locally and in Docker via --env-file)
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": False,
+        "extra": "ignore",  # Don't crash if .env has extra variables
+    }
 
 # Global settings instance
 settings = Settings()

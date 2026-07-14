@@ -53,9 +53,16 @@ async def process_and_index_document(file_path: str, user_id: str, conversation_
     """
     Parses a document using LlamaParse and indexes it into Qdrant with metadata.
     """
-    # Upload and Parse with LlamaCloud
-    with open(file_path, "rb") as f:
-        file_obj = await client.files.upload_file(file=f)
+    # Upload and Parse with LlamaCloud (using aiofiles for non-blocking read)
+    import aiofiles
+    async with aiofiles.open(file_path, "rb") as f:
+        file_bytes = await f.read()
+
+    # LlamaCloud upload requires a file-like object; wrap bytes in BytesIO
+    from io import BytesIO
+    file_obj = await client.files.upload_file(
+        file=(os.path.basename(file_path), BytesIO(file_bytes))
+    )
         
     result = await client.parsing.parse(
         file_id=file_obj.id, 
@@ -69,13 +76,13 @@ async def process_and_index_document(file_path: str, user_id: str, conversation_
         for page in result.markdown.pages:
             lc_doc = LangchainDocument(
                 page_content=page.markdown,
-            metadata={
-                "user_id": str(user_id),
-                "conversation_id": str(conversation_id),
-                "source": os.path.basename(file_path)
-            }
-        )
-        langchain_docs.append(lc_doc)
+                metadata={
+                    "user_id": str(user_id),
+                    "conversation_id": str(conversation_id),
+                    "source": os.path.basename(file_path)
+                }
+            )
+            langchain_docs.append(lc_doc)  # FIX: was outside loop, only saved last page
         
     if langchain_docs:
         await vector_store.aadd_documents(langchain_docs)

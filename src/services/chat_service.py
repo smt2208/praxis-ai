@@ -112,6 +112,7 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
     
     config = {"configurable": {"user_id": str(user_id), "conversation_id": str(conversation_id)}}
     ai_response_chunks = []
+    final_state = None
     
     try:
         async for event in agent_executor.astream_events(state, config=config, version="v2"):
@@ -121,6 +122,9 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
                 if content and isinstance(content, str):
                     ai_response_chunks.append(content)
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+            elif kind == "on_chain_end" and event.get("name") == "LangGraph":
+                # Capture the final graph output state
+                final_state = event["data"].get("output")
             elif kind == "on_tool_start":
                 yield f"data: {json.dumps({'type': 'tool_start', 'tool': event['name'], 'input': event['data'].get('input')})}\n\n"
             elif kind == "on_tool_end":
@@ -129,11 +133,25 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
         yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
         return
         
+    # Build the full response string.
+    # Primary: join streamed tokens.
+    # Fallback: extract from final graph state (handles cases where supervisor
+    #           synthesizes a ToolMessage result without streaming).
     ai_response_full = "".join(ai_response_chunks)
+    if not ai_response_full and final_state:
+        from langchain_core.messages import AIMessage as AIMsg
+        msgs = final_state.get("messages", [])
+        if msgs and isinstance(msgs[-1], AIMsg):
+            ai_response_full = msgs[-1].content
+            # Yield the full content as a single token so the client receives it
+            if ai_response_full:
+                yield f"data: {json.dumps({'type': 'token', 'content': ai_response_full})}\n\n"
     
     # Save AI Message
     if ai_response_full:
         ai_msg_db = Message(conversation_id=conversation_id, role="assistant", content=ai_response_full)
         db.add(ai_msg_db)
         await db.commit()
+
+    yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

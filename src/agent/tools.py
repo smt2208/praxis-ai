@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from langchain_tavily import TavilySearchResults
+from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.runnables import RunnableConfig
 from src.core.config import settings
 from src.agent.document import get_retriever
