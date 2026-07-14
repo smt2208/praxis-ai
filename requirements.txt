@@ -26,7 +26,6 @@ python-multipart>=0.0.20
 # ============================================================
 SQLAlchemy[asyncio]==2.0.51
 asyncpg>=0.31
-alembic==1.18.5
 
 # ============================================================
 # Authentication
@@ -43,7 +42,6 @@ bcrypt==5.0.0
 # ============================================================
 qdrant-client==1.18.0
 langchain-qdrant==1.1.0
-langchain-community>=0.0.38
 langchain-tavily>=0.2
 tavily-python>=0.3.0
 fastembed>=0.7
@@ -59,14 +57,13 @@ fastembed>=0.7
 # will trigger a resolver conflict. Request boto3 via the
 # aioboto3 extra if you need it directly.
 # ============================================================
-llama-cloud==2.10.0
-aioboto3[boto3]==15.5.0
+llama-cloud>=2.11,<3
+boto3>=1.40,<2
 
 # ============================================================
 # Utilities
 # ============================================================
 python-dotenv>=1.2
-tqdm>=4.67
 fpdf2>=2.8
 aiofiles==23.2.1
 matplotlib>=3.8.0

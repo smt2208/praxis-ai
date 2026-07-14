@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.config import settings
 
 # Create async engine tuned for AWS RDS
@@ -17,7 +17,7 @@ engine = create_async_engine(
 )
 
 # Async session factory
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     engine, 
     class_=AsyncSession, 
     expire_on_commit=False
@@ -26,4 +26,8 @@ AsyncSessionLocal = sessionmaker(
 async def get_db():
     """Dependency for getting async database sessions."""
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

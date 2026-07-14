@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db.session import get_db
 from src.core.security import get_current_user
 from src.db.models import User
 from src.schemas.chat import ConversationCreate, ConversationResponse, MessageCreate, MessageResponse
-from src.services.chat_service import create_conversation, get_user_conversations, process_chat_message, delete_conversation
+from src.services.chat_service import (
+    create_conversation,
+    delete_conversation,
+    get_user_conversations,
+    process_chat_message,
+    stream_chat_message,
+)
 import uuid
 from typing import List
 
@@ -35,12 +42,10 @@ async def delete_conversation_route(
         await delete_conversation(db, current_user.id, conversation_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to delete the conversation")
 
-from fastapi.responses import StreamingResponse
-
-@router.post("/conversations/{conversation_id}/messages")
+@router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
 async def send_message(
     conversation_id: uuid.UUID,
     msg: MessageCreate,
@@ -49,15 +54,15 @@ async def send_message(
 ):
     try:
         if msg.stream:
-            from src.services.chat_service import stream_chat_message
             return StreamingResponse(
                 stream_chat_message(db, current_user.id, conversation_id, msg),
-                media_type="text/event-stream"
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
         else:
             response_msg = await process_chat_message(db, current_user.id, conversation_id, msg)
             return response_msg
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="Unable to process the message")

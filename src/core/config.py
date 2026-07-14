@@ -4,12 +4,8 @@ Loads environment variables and provides validated config access.
 """
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr
-from pathlib import Path
-from typing import Optional
+from typing import List
 from urllib.parse import quote_plus
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
 
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
@@ -18,6 +14,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_reload: bool = False
+    cors_origins: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    max_upload_size_bytes: int = 20 * 1024 * 1024
+    enable_code_execution: bool = False
     
     # PostgreSQL Configuration
     postgres_user: str = "postgres"

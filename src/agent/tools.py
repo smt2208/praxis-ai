@@ -98,6 +98,9 @@ def execute_python_and_visualize(code: str) -> str:
     If your code generates charts (e.g., using matplotlib.pyplot), save them to the current directory
     as a .png file (e.g., plt.savefig('chart.png')). The tool will automatically upload them and display them to the user.
     """
+    if not settings.enable_code_execution:
+        return "Code execution is disabled. Set ENABLE_CODE_EXECUTION=true only in an isolated sandbox."
+
     temp_dir = tempfile.mkdtemp()
     code_file_path = os.path.join(temp_dir, "script.py")
     

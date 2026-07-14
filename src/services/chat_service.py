@@ -1,11 +1,60 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.db.models import Conversation, Message, User
-from src.schemas.chat import MessageCreate, ConversationCreate
+from src.db.models import Conversation, Message
+from src.schemas.chat import MessageCreate
 from src.agent.workflow import agent_executor
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 import uuid
 import json
+from typing import Any
+
+
+def message_text(message: Any) -> str:
+    """Return the text portion of a LangChain message or streamed chunk."""
+    text = getattr(message, "text", None)
+    if isinstance(text, str):
+        return text
+
+    content = getattr(message, "content", message)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return ""
+
+
+async def ensure_conversation_access(
+    db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID
+) -> Conversation:
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+        )
+    )
+    conversation = result.scalars().first()
+    if not conversation:
+        raise ValueError("Conversation not found or unauthorized")
+    return conversation
+
+
+async def get_langchain_history(db: AsyncSession, conversation_id: uuid.UUID):
+    result = await db.execute(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc())
+    )
+    return [
+        HumanMessage(content=message.content)
+        if message.role == "user"
+        else AIMessage(content=message.content)
+        for message in result.scalars()
+        if message.role in {"user", "assistant"}
+    ]
 
 async def create_conversation(db: AsyncSession, user_id: uuid.UUID, title: str):
     db_conversation = Conversation(user_id=user_id, title=title)
@@ -19,21 +68,14 @@ async def get_user_conversations(db: AsyncSession, user_id: uuid.UUID):
     return result.scalars().all()
 
 async def delete_conversation(db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID):
-    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id))
-    conversation = result.scalars().first()
-    if not conversation:
-        raise ValueError("Conversation not found or unauthorized")
+    conversation = await ensure_conversation_access(db, user_id, conversation_id)
     
     await db.delete(conversation)
     await db.commit()
     return True
 
 async def process_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID, msg: MessageCreate):
-    # Verify conversation exists and belongs to user
-    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id))
-    conversation = result.scalars().first()
-    if not conversation:
-        raise ValueError("Conversation not found or unauthorized")
+    await ensure_conversation_access(db, user_id, conversation_id)
 
     # Save Human Message
     human_msg_db = Message(conversation_id=conversation_id, role="user", content=msg.content)
@@ -41,32 +83,23 @@ async def process_chat_message(db: AsyncSession, user_id: uuid.UUID, conversatio
     await db.commit()
 
     # Retrieve history
-    history_result = await db.execute(select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.asc()))
-    history_msgs = history_result.scalars().all()
-    
-    # Format for LangGraph
-    langchain_messages = []
-    for h in history_msgs:
-        if h.role == "user":
-            langchain_messages.append(HumanMessage(content=h.content))
-        elif h.role == "assistant":
-            # For simplicity, we append it as AIMessage
-            from langchain_core.messages import AIMessage
-            langchain_messages.append(AIMessage(content=h.content))
+    langchain_messages = await get_langchain_history(db, conversation_id)
             
     # Run Agent
     state = {
         "messages": langchain_messages,
         "model_name": msg.model,
         "user_id": str(user_id),
-        "conversation_id": str(conversation_id)
+        "conversation_id": str(conversation_id),
+        "enable_web_search": msg.enable_web_search,
+        "generate_document": msg.generate_document,
     }
     
     response_state = await agent_executor.ainvoke(
         state,
         config={"configurable": {"user_id": str(user_id), "conversation_id": str(conversation_id)}}
     )
-    ai_response = response_state["messages"][-1].content
+    ai_response = message_text(response_state["messages"][-1])
     
     # Save AI Message
     ai_msg_db = Message(conversation_id=conversation_id, role="assistant", content=ai_response)
@@ -78,9 +111,9 @@ async def process_chat_message(db: AsyncSession, user_id: uuid.UUID, conversatio
 
 async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID, msg: MessageCreate):
     # Verify conversation exists and belongs to user
-    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user_id))
-    conversation = result.scalars().first()
-    if not conversation:
+    try:
+        await ensure_conversation_access(db, user_id, conversation_id)
+    except ValueError:
         yield f"data: {json.dumps({'type': 'error', 'content': 'Conversation not found or unauthorized'})}\n\n"
         return
 
@@ -90,24 +123,16 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
     await db.commit()
 
     # Retrieve history
-    history_result = await db.execute(select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at.asc()))
-    history_msgs = history_result.scalars().all()
-    
-    # Format for LangGraph
-    langchain_messages = []
-    for h in history_msgs:
-        if h.role == "user":
-            langchain_messages.append(HumanMessage(content=h.content))
-        elif h.role == "assistant":
-            from langchain_core.messages import AIMessage
-            langchain_messages.append(AIMessage(content=h.content))
+    langchain_messages = await get_langchain_history(db, conversation_id)
             
     # Run Agent
     state = {
         "messages": langchain_messages,
         "model_name": msg.model,
         "user_id": str(user_id),
-        "conversation_id": str(conversation_id)
+        "conversation_id": str(conversation_id),
+        "enable_web_search": msg.enable_web_search,
+        "generate_document": msg.generate_document,
     }
     
     config = {"configurable": {"user_id": str(user_id), "conversation_id": str(conversation_id)}}
@@ -119,8 +144,8 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
             kind = event["event"]
             if kind == "on_chat_model_stream":
                 if "router" not in event.get("tags", []):
-                    content = event["data"]["chunk"].content
-                    if content and isinstance(content, str):
+                    content = message_text(event["data"]["chunk"])
+                    if content:
                         ai_response_chunks.append(content)
                         yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
             elif kind == "on_chain_end" and event.get("name") == "LangGraph":
@@ -130,8 +155,8 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
                 yield f"data: {json.dumps({'type': 'tool_start', 'tool': event['name'], 'input': event['data'].get('input')})}\n\n"
             elif kind == "on_tool_end":
                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': event['name']})}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+    except Exception:
+        yield f"data: {json.dumps({'type': 'error', 'content': 'Unable to process the message'})}\n\n"
         return
         
     # Build the full response string.
@@ -143,7 +168,7 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
         from langchain_core.messages import AIMessage as AIMsg
         msgs = final_state.get("messages", [])
         if msgs and isinstance(msgs[-1], AIMsg):
-            ai_response_full = msgs[-1].content
+            ai_response_full = message_text(msgs[-1])
             # Yield the full content as a single token so the client receives it
             if ai_response_full:
                 yield f"data: {json.dumps({'type': 'token', 'content': ai_response_full})}\n\n"
@@ -155,4 +180,3 @@ async def stream_chat_message(db: AsyncSession, user_id: uuid.UUID, conversation
         await db.commit()
 
     yield f"data: {json.dumps({'type': 'done'})}\n\n"
-

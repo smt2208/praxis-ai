@@ -4,16 +4,22 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document as LangchainDocument
 from src.core.config import settings
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, SparseVectorParams, SparseIndexParams
-from io import BytesIO
-import aiofiles
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    SparseIndexParams,
+    SparseVectorParams,
+    VectorParams,
+)
 import os
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Initialize LlamaCloud (llama-cloud v2.x uses api_key=, not token=)
-client = AsyncLlamaCloud(api_key=settings.llama_cloud_api_key)
+_llama_client: AsyncLlamaCloud | None = None
 
 # ---------------------------------------------------------------------------
 # Lazy Qdrant initialization
@@ -29,20 +35,34 @@ _dense_embeddings: OpenAIEmbeddings | None = None
 _sparse_embeddings: FastEmbedSparse | None = None
 
 
+def _get_llama_client() -> AsyncLlamaCloud:
+    """Create the parser client only when document ingestion is requested."""
+    global _llama_client
+    if _llama_client is None:
+        if not settings.llama_cloud_api_key:
+            raise RuntimeError("LLAMA_CLOUD_API_KEY must be configured before uploading documents.")
+        _llama_client = AsyncLlamaCloud(
+            api_key=settings.llama_cloud_api_key,
+            timeout=120.0,
+        )
+    return _llama_client
+
+
 def _get_qdrant_client() -> QdrantClient:
     global _qdrant_client
     if _qdrant_client is None:
+        if not settings.qdrant_url:
+            raise RuntimeError("QDRANT_URL must be configured before using document search.")
         _qdrant_client = QdrantClient(
             url=settings.qdrant_url,
             api_key=settings.qdrant_api_key,
             timeout=10,         # Fail fast — don't hang for 30s
             check_compatibility=False,  # Skip version check to avoid extra call
         )
-        # Ensure the collection exists
-        try:
-            _qdrant_client.get_collection(collection_name=settings.qdrant_collection_name)
+        # Do not treat connectivity/authentication failures as a missing collection.
+        if _qdrant_client.collection_exists(collection_name=settings.qdrant_collection_name):
             logger.info(f"Qdrant collection '{settings.qdrant_collection_name}' found.")
-        except Exception:
+        else:
             logger.info(f"Creating Qdrant collection '{settings.qdrant_collection_name}'...")
             _qdrant_client.create_collection(
                 collection_name=settings.qdrant_collection_name,
@@ -82,16 +102,14 @@ async def process_and_index_document(file_path: str, user_id: str, conversation_
     """
     Parses a document using LlamaParse and indexes it into Qdrant with metadata.
     """
-    # Read file asynchronously (non-blocking)
-    async with aiofiles.open(file_path, "rb") as f:
-        file_bytes = await f.read()
-
-    # Upload to LlamaCloud for parsing
-    file_obj = await client.files.upload_file(
-        file=(os.path.basename(file_path), BytesIO(file_bytes))
+    # The current SDK accepts a Path directly and reads it asynchronously.
+    # `upload_file` was removed in llama-cloud 2.x; use files.create instead.
+    file_obj = await _get_llama_client().files.create(
+        file=Path(file_path),
+        purpose="parse",
     )
 
-    result = await client.parsing.parse(
+    result = await _get_llama_client().parsing.parse(
         file_id=file_obj.id,
         tier="agentic",
         version="latest",
@@ -99,8 +117,9 @@ async def process_and_index_document(file_path: str, user_id: str, conversation_
     )
 
     langchain_docs = []
-    if result.markdown and result.markdown.pages:
-        for page in result.markdown.pages:
+    pages = getattr(getattr(result, "markdown", None), "pages", None) or []
+    if pages:
+        for page in pages:
             lc_doc = LangchainDocument(
                 page_content=page.markdown,
                 metadata={
@@ -117,17 +136,21 @@ async def process_and_index_document(file_path: str, user_id: str, conversation_
     return len(langchain_docs)
 
 
-def get_retriever(user_id: str, conversation_id: str = None):
+def get_retriever(user_id: str, conversation_id: str | None = None):
     """
     Returns a retriever scoped to the specific user and conversation.
     """
-    filter_dict = {"user_id": str(user_id)}
+    conditions = [FieldCondition(key="metadata.user_id", match=MatchValue(value=str(user_id)))]
     if conversation_id:
-        filter_dict["conversation_id"] = str(conversation_id)
+        conditions.append(
+            FieldCondition(
+                key="metadata.conversation_id", match=MatchValue(value=str(conversation_id))
+            )
+        )
 
     return _get_vector_store().as_retriever(
         search_kwargs={
-            "filter": filter_dict,
+            "filter": Filter(must=conditions),
             "k": 15
         }
     )

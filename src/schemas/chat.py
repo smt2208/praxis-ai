@@ -1,10 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from uuid import UUID
 from datetime import datetime
-from typing import List, Optional
 
 class MessageCreate(BaseModel):
-    content: str
+    content: str = Field(min_length=1)
     # Optional parameters for generation behavior
     model: str = "gpt-5.4-mini-2026-03-17"
     enable_web_search: bool = False
@@ -18,11 +17,10 @@ class MessageResponse(BaseModel):
     content: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ConversationCreate(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=255)
 
 class ConversationResponse(BaseModel):
     id: UUID
@@ -30,5 +28,4 @@ class ConversationResponse(BaseModel):
     title: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

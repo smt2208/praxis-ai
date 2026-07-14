@@ -1,7 +1,7 @@
 from typing import Annotated, TypedDict, List, Literal
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from src.agent.tools import tavily_search, generate_and_upload_document, search_uploaded_documents, execute_python_and_visualize
 from src.agent.prompts import (
     RESEARCHER_PROMPT,
@@ -14,7 +14,7 @@ from src.core.config import settings
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import ToolNode
-import json
+from pydantic import BaseModel
 
 # Define State
 class AgentState(TypedDict):
@@ -23,6 +23,8 @@ class AgentState(TypedDict):
     user_id: str
     conversation_id: str
     active_agent: str
+    enable_web_search: bool
+    generate_document: bool
 
 def get_llm(model_name: str):
     if "gemini" in model_name.lower():
@@ -64,9 +66,8 @@ async def code_sandbox_agent(state: AgentState):
 # SUPERVISOR
 # ---------------------------------------------------------
 
-class RouterChoice(TypedDict):
+class RouterChoice(BaseModel):
     next_agent: Literal["researcher", "knowledge_vault", "document_generator", "code_sandbox", "FINISH"]
-    reasoning: str
 
 async def supervisor_agent(state: AgentState):
     """
@@ -82,20 +83,25 @@ async def supervisor_agent(state: AgentState):
     
     # If the last message was a tool execution, we must synthesize the final answer
     last_message = state["messages"][-1]
-    if isinstance(last_message, ToolMessage):
+    if not isinstance(last_message, HumanMessage):
         # Synthesize final response — include sys_msg so the AI has its persona
         final_response = await llm.ainvoke([sys_msg] + state["messages"])
         return {"messages": [final_response], "active_agent": "supervisor"}
         
+    if state.get("enable_web_search"):
+        return {"active_agent": "researcher"}
+    if state.get("generate_document"):
+        return {"active_agent": "document_generator"}
+
     choice = await router.ainvoke([sys_msg] + state["messages"], config={"tags": ["router"]})
     
-    if choice["next_agent"] == "FINISH":
+    if choice.next_agent == "FINISH":
         # Just chat normally — include sys_msg for consistent AI persona
         final_response = await llm.ainvoke([sys_msg] + state["messages"])
         return {"messages": [final_response], "active_agent": "supervisor"}
     
     # Otherwise, return nothing to messages, just update active_agent so the router knows where to go
-    return {"active_agent": choice["next_agent"]}
+    return {"active_agent": choice.next_agent}
 
 # ---------------------------------------------------------
 # ROUTING LOGIC
@@ -112,8 +118,10 @@ def worker_router(state: AgentState):
     # If the worker called a tool, route to the tool node
     if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
         return "tools"
-    # Otherwise, the worker is done, go back to supervisor
-    return "supervisor"
+    # A worker without a tool call has already produced the final answer.
+    # Ending here avoids streaming both the worker's answer and a duplicate
+    # supervisor rewrite.
+    return END
 
 # ---------------------------------------------------------
 # GRAPH CONSTRUCTION
@@ -147,7 +155,7 @@ workflow.add_conditional_edges("supervisor", supervisor_router, {
 for worker in ["researcher", "knowledge_vault", "document_generator", "code_sandbox"]:
     workflow.add_conditional_edges(worker, worker_router, {
         "tools": "tools",
-        "supervisor": "supervisor"
+        END: END,
     })
 
 # Tools always route back to the supervisor so it can synthesize

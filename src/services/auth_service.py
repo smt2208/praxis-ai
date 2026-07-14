@@ -6,16 +6,16 @@ from src.core.security import get_password_hash, verify_password
 from fastapi import HTTPException, status
 
 async def get_user_by_email(db: AsyncSession, email: str):
-    result = await db.execute(select(User).where(User.email == email))
+    result = await db.execute(select(User).where(User.email == email.lower()))
     return result.scalars().first()
 
 async def create_user(db: AsyncSession, user: UserCreate):
     db_user = await get_user_by_email(db, email=user.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     
     hashed_password = get_password_hash(user.password)
-    db_user = User(email=user.email, hashed_password=hashed_password)
+    db_user = User(email=user.email.lower(), hashed_password=hashed_password)
     db.add(db_user)
     await db.commit()
     await db.refresh(db_user)
