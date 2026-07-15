@@ -8,67 +8,26 @@ The system utilizes a fully stateless design via `langgraph`, meaning memory is 
 
 ```mermaid
 graph TD
-    %% Entities
-    User([User Client])
-    DB[(AWS RDS PostgreSQL)]
-    Qdrant[(Qdrant Hybrid Vector Store)]
-    Web((Internet / APIs))
-
-    %% Core App
-    subgraph APIApp [FastAPI Application]
-        API[API Endpoints]
+    User([User Client]) --> |POST /api/v1/chat| API[FastAPI App]
+    API --> |Load History| DB[(AWS RDS PostgreSQL)]
+    
+    API --> CEO{CEO Orchestrator}
+    
+    subgraph Multi-Agent Swarm [LangGraph]
+        CEO --> |Facts / RAG| Knowledge[Knowledge Team]
+        CEO --> |Deep Research| Research[Research Team]
+        CEO --> |Casual Chat| FollowUp[Follow-Up Agent]
+        
+        Knowledge -.-> |Search & Synthesize| Qdrant[(Qdrant Vector DB)]
+        Research -.-> |Iterative Web/ArXiv| Web((Internet))
     end
-
-    %% CEO Routing
-    subgraph Swarm [Multi-Agent Swarm - LangGraph]
-        CEO{CEO Orchestrator}
-        
-        %% Department A
-        subgraph DeptA [Department A - Knowledge Team]
-            RAG[RAG Agent]
-            WebExp[Web Expert]
-            Synth[Synthesizer]
-        end
-        
-        %% Department B
-        subgraph DeptB [Department B - Deep Research Team]
-            Plan[Planner]
-            SearchLoop[Researcher Loop]
-            Report[Reporter]
-        end
-        
-        %% Department C
-        FollowUp[Follow-Up Agent]
-    end
-
-    %% Flow
-    User --> |POST /api/v1/chat| API
-    API --> |Fetch History| DB
-    API --> |Invoke Graph| CEO
     
-    %% Routing
-    CEO --> |RAG / Facts| RAG
-    CEO --> |Academic / Deep Dive| Plan
-    CEO --> |Casual Chat| FollowUp
+    Knowledge --> |Answer| API
+    Research --> |Report| API
+    FollowUp --> |Response| API
     
-    %% Knowledge Flow
-    RAG --> |Query| Qdrant
-    RAG --> WebExp
-    WebExp --> |Tavily API| Web
-    WebExp --> Synth
-    
-    %% Research Flow
-    Plan --> SearchLoop
-    SearchLoop -.-> |ArXiv + Tavily| Web
-    SearchLoop --> |Max Iters| Report
-    
-    %% Output
-    Synth --> |Answer| API
-    Report --> |Report| API
-    FollowUp --> |Answer| API
-    
-    API --> |Save Messages| DB
-    API --> |Response| User
+    API --> |Save Message| DB
+    API --> |JSON Response| User
 ```
 
 ## ✨ Key Features
