@@ -8,26 +8,44 @@ The system utilizes a fully stateless design via `langgraph`, meaning memory is 
 
 ```mermaid
 graph TD
-    User([User Client]) --> |POST /api/v1/chat| API[FastAPI App]
-    API --> |Load History| DB[(AWS RDS PostgreSQL)]
+    %% Visual Styles
+    classDef client fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#155724;
+    classDef api fill:#cce5ff,stroke:#007bff,stroke-width:2px,color:#004085;
+    classDef agent fill:#fff3cd,stroke:#ffc107,stroke-width:2px,color:#856404;
+    classDef db fill:#e2e3e5,stroke:#383d41,stroke-width:2px,color:#383d41;
+
+    %% Components
+    User([👤 User Client]):::client
+    API[⚡ FastAPI Backend]:::api
+    DB[(🐘 RDS PostgreSQL)]:::db
+    Qdrant[(💠 Qdrant Hybrid DB)]:::db
+    Web((🌐 Web / ArXiv)):::db
     
-    API --> CEO{CEO Orchestrator}
-    
-    subgraph Multi-Agent Swarm [LangGraph]
-        CEO --> |Facts / RAG| Knowledge[Knowledge Team]
-        CEO --> |Deep Research| Research[Research Team]
-        CEO --> |Casual Chat| FollowUp[Follow-Up Agent]
-        
-        Knowledge -.-> |Search & Synthesize| Qdrant[(Qdrant Vector DB)]
-        Research -.-> |Iterative Web/ArXiv| Web((Internet))
+    subgraph LangGraph [🤖 Autonomous Multi-Agent Swarm]
+        CEO{🧠 CEO Orchestrator}:::agent
+        Knowledge[📚 Knowledge Team]:::agent
+        Research[🔬 Research Team]:::agent
+        FollowUp[💬 Follow-up Agent]:::agent
     end
+
+    %% Flow
+    User -- 1. POST /chat --> API
+    API <-- 2. Load & Save History --> DB
     
-    Knowledge --> |Answer| API
-    Research --> |Report| API
-    FollowUp --> |Response| API
+    API -- 3. Execute Graph --> CEO
     
-    API --> |Save Message| DB
-    API --> |JSON Response| User
+    CEO -- "RAG/News" --> Knowledge
+    CEO -- "Literature" --> Research
+    CEO -- "Casual" --> FollowUp
+    
+    Knowledge -. 4a. Hybrid Search .-> Qdrant
+    Research -. 4b. Iterative Search .-> Web
+    
+    Knowledge -- 5. Synthesize --> API
+    Research -- 5. Report --> API
+    FollowUp -- 5. Chat --> API
+    
+    API -- 6. JSON Response --> User
 ```
 
 ## ✨ Key Features
