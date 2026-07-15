@@ -15,23 +15,23 @@ graph TD
     Web((Internet / APIs))
 
     %% Core App
-    subgraph FastAPI Application
+    subgraph APIApp [FastAPI Application]
         API[API Endpoints]
     end
 
     %% CEO Routing
-    subgraph Multi-Agent Swarm (LangGraph)
+    subgraph Swarm [Multi-Agent Swarm - LangGraph]
         CEO{CEO Orchestrator}
         
         %% Department A
-        subgraph Department A: Knowledge Team
+        subgraph DeptA [Department A - Knowledge Team]
             RAG[RAG Agent]
             WebExp[Web Expert]
             Synth[Synthesizer]
         end
         
         %% Department B
-        subgraph Department B: Deep Research Team
+        subgraph DeptB [Department B - Deep Research Team]
             Plan[Planner]
             SearchLoop[Researcher Loop]
             Report[Reporter]
