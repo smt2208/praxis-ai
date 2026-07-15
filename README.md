@@ -38,8 +38,8 @@ graph TD
     CEO -- "Literature" --> Research
     CEO -- "Casual" --> FollowUp
     
-    Knowledge -. 4a. Hybrid Search .-> Qdrant
-    Research -. 4b. Iterative Search .-> Web
+    Knowledge -.->|4a. Hybrid Search| Qdrant
+    Research -.->|4b. Iterative Search| Web
     
     Knowledge -- 5. Synthesize --> API
     Research -- 5. Report --> API
