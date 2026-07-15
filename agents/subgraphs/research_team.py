@@ -1,0 +1,143 @@
+"""
+agents/subgraphs/research_team.py
+
+Department B — Deep Thinking / Academic Research Team
+Workflow: Planner → Researcher (loops up to MAX_ITER times) → Reporter
+
+Private state never leaks to the parent CEO graph.
+"""
+from typing import TypedDict, Annotated
+import operator
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.graph import StateGraph, START, END
+from langgraph.prebuilt import create_react_agent
+
+from agents.tools import tavily_tool, arxiv_tool
+from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
+
+
+# --- Constants ---------------------------------------------------------
+MAX_RESEARCH_ITERATIONS = 3
+
+
+# --- Private state -----------------------------------------------------
+
+class ResearchState(TypedDict):
+    query: str
+    research_plan: list[str]          # Step-by-step checklist from planner
+    findings: Annotated[list[str], operator.add]  # Accumulated, appended each loop
+    iteration: int
+    final_report: str
+
+
+# --- LLM ---------------------------------------------------------------
+
+_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+
+# --- Node: Planner -----------------------------------------------------
+
+def planner_node(state: ResearchState) -> dict:
+    """Break the query into a numbered research checklist."""
+    messages = [
+        SystemMessage(content=PLANNER_SYSTEM),
+        HumanMessage(content=state["query"]),
+    ]
+    response = _llm.invoke(messages)
+    # Parse numbered list into python list
+    lines = [l.strip() for l in response.content.strip().split("\n") if l.strip()]
+    plan = [l.lstrip("0123456789. )") .strip() for l in lines if l]
+    return {"research_plan": plan, "iteration": 0}
+
+
+# --- Node: Researcher --------------------------------------------------
+
+def researcher_node(state: ResearchState) -> dict:
+    """
+    Pick the next un-researched step and search for it.
+    Appends findings (list reducer merges them).
+    """
+    # Determine which step to work on based on iteration count
+    plan = state["research_plan"]
+    iteration = state["iteration"]
+    step_idx = min(iteration, len(plan) - 1)
+    current_step = plan[step_idx]
+
+    agent = create_react_agent(_llm, [arxiv_tool, tavily_tool])
+    prompt = RESEARCHER_HUMAN.format(
+        query=state['query'],
+        step_num=step_idx + 1,
+        total_steps=len(plan),
+        current_step=current_step
+    )
+    result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+    finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
+
+    return {
+        "findings": [finding],
+        "iteration": iteration + 1,
+    }
+
+
+# --- Routing: continue or finish? --------------------------------------
+
+def should_continue(state: ResearchState) -> str:
+    """Loop researcher until all plan steps are covered or max iterations hit."""
+    if state["iteration"] >= len(state["research_plan"]):
+        return "reporter"
+    if state["iteration"] >= MAX_RESEARCH_ITERATIONS:
+        return "reporter"
+    return "researcher"
+
+
+# --- Node: Reporter ----------------------------------------------------
+
+def reporter_node(state: ResearchState) -> dict:
+    """Synthesize all findings into a final, well-structured report."""
+    findings_text = "\n\n".join(state["findings"])
+    messages = [
+        SystemMessage(content=REPORTER_SYSTEM),
+        HumanMessage(content=REPORTER_HUMAN.format(
+            query=state['query'],
+            findings_text=findings_text
+        )),
+    ]
+    response = _llm.invoke(messages)
+    return {"final_report": response.content}
+
+
+# --- Build subgraph ----------------------------------------------------
+
+def _build_research_graph():
+    builder = StateGraph(ResearchState)
+    builder.add_node("planner", planner_node)
+    builder.add_node("researcher", researcher_node)
+    builder.add_node("reporter", reporter_node)
+
+    builder.add_edge(START, "planner")
+    builder.add_edge("planner", "researcher")
+    builder.add_conditional_edges("researcher", should_continue, {"researcher": "researcher", "reporter": "reporter"})
+    builder.add_edge("reporter", END)
+
+    return builder.compile()
+
+
+research_graph = _build_research_graph()
+
+
+# --- Wrapper (called by parent graph) ----------------------------------
+
+def run_research_team(query: str) -> str:
+    """
+    Entry point for the parent CEO graph.
+    Returns only the final report string.
+    """
+    result = research_graph.invoke({
+        "query": query,
+        "research_plan": [],
+        "findings": [],
+        "iteration": 0,
+        "final_report": "",
+    })
+    return result["final_report"]

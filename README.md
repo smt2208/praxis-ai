@@ -1,120 +1,172 @@
-# Multimodal Agentic Chatbot
+# Praxis AI 🧠
 
-> A next-generation, fully autonomous, multimodal AI assistant backend. Powered by LangGraph, FastAPI, and Qdrant, featuring real-time SSE streaming, hybrid vector search, and dynamic tool usage (Agentic RAG, Web Search, and Document Generation).
-
----
+**Praxis AI** is a robust, stateless, hierarchical Multi-Agent API built for complex reasoning and enterprise-scale task execution. Instead of relying on a single monolithic prompt, Praxis AI operates like a digital corporation: a top-level **CEO Orchestrator** analyzes user requests and dynamically routes them to specialized AI sub-teams (e.g., Knowledge Team or Research Team) for precise, cost-effective, and hallucination-resistant responses.
 
 ## 🏗 Architecture
 
-The backend is engineered for high-performance, asynchronous, multi-tenant production environments.
+The system utilizes a fully stateless design via `langgraph`, meaning memory is persisted in a PostgreSQL database and injected per-request, enabling infinite horizontal scaling.
 
 ```mermaid
 graph TD
-    Client[Next.js Frontend] -->|JWT Auth / HTTP / SSE| FastAPI[FastAPI Backend]
+    %% Entities
+    User([User Client])
+    DB[(AWS RDS PostgreSQL)]
+    Qdrant[(Qdrant Hybrid Vector Store)]
+    Web((Internet / APIs))
+
+    %% Core App
+    subgraph FastAPI Application
+        API[API Endpoints]
+    end
+
+    %% CEO Routing
+    subgraph Multi-Agent Swarm (LangGraph)
+        CEO{CEO Orchestrator}
+        
+        %% Department A
+        subgraph Department A: Knowledge Team
+            RAG[RAG Agent]
+            WebExp[Web Expert]
+            Synth[Synthesizer]
+        end
+        
+        %% Department B
+        subgraph Department B: Deep Research Team
+            Plan[Planner]
+            SearchLoop[Researcher Loop]
+            Report[Reporter]
+        end
+        
+        %% Department C
+        FollowUp[Follow-Up Agent]
+    end
+
+    %% Flow
+    User --> |POST /api/v1/chat| API
+    API --> |Fetch History| DB
+    API --> |Invoke Graph| CEO
     
-    subgraph Core Services
-        FastAPI -->|PostgreSQL (AsyncPG)| DB[(PostgreSQL)]
-        FastAPI -->|SSE Stream| Client
-    end
-
-    subgraph Agentic Brain (LangGraph)
-        FastAPI -->|Invoke| LangGraph[LangGraph State Machine]
-        LangGraph -->|LLM| OpenAI_Gemini[OpenAI / Gemini]
-    end
-
-    subgraph Autonomous Tools
-        LangGraph -->|Tool: Search Web| Tavily[Tavily Search API]
-        LangGraph -->|Tool: Search Documents| Qdrant[(Qdrant Vector DB)]
-        LangGraph -->|Tool: Generate PDF| S3[(AWS S3)]
-    end
-
-    subgraph Document Ingestion Pipeline
-        FastAPI -->|Upload| LlamaCloud[LlamaCloud Parser]
-        LlamaCloud -->|Extract Markdown| LangChain[LangChain Chunker]
-        LangChain -->|Hybrid Vector| Qdrant
-    end
+    %% Routing
+    CEO --> |RAG / Facts| RAG
+    CEO --> |Academic / Deep Dive| Plan
+    CEO --> |Casual Chat| FollowUp
+    
+    %% Knowledge Flow
+    RAG --> |Query| Qdrant
+    RAG --> WebExp
+    WebExp --> |Tavily API| Web
+    WebExp --> Synth
+    
+    %% Research Flow
+    Plan --> SearchLoop
+    SearchLoop -.-> |ArXiv + Tavily| Web
+    SearchLoop --> |Max Iters| Report
+    
+    %% Output
+    Synth --> |Answer| API
+    Report --> |Report| API
+    FollowUp --> |Answer| API
+    
+    API --> |Save Messages| DB
+    API --> |Response| User
 ```
 
----
+## ✨ Key Features
 
-## ✨ Features
+- **Stateless Execution:** State is maintained via `asyncpg` connected to AWS RDS, avoiding memory bloat and enabling stateless horizontal scaling.
+- **Hierarchical Swarm:** Uses `langgraph` to isolate state within sub-teams (Knowledge vs. Research), preventing context pollution.
+- **Hybrid Retrieval:** Qdrant vector store uses both dense (`text-embedding-3-small`) and sparse (`FastEmbedSparse BM25`) embeddings for maximum accuracy.
+- **Smart Ingestion Pipeline:** Document ingestion powered by `LlamaParse`, pulling data directly from URLs, chunking it, and upserting into the knowledge base.
+- **Safe Academic Research:** Dedicated arXiv tool wrapper (`arxiv==2.4.1`) combined with a multi-loop research agent writes extensive, cited literature reviews.
 
-### 🧠 Agentic RAG
-Powered by **LangGraph**, the LLM operates as an autonomous agent. Instead of blindly answering, it analyzes the user's prompt and decides which tools to invoke, parsing the results dynamically before answering.
+## 📂 Modular Project Structure
 
-### 📚 Hybrid Vector Search
-Integrated with **Qdrant**, the backend uses true Hybrid Search (Dense Vectors + BM25 Sparse Vectors) to find exact-match keywords and semantically similar concepts across user-uploaded documents.
-
-### 📄 Multimodal Document Understanding
-The platform relies on the bleeding-edge **LlamaCloud SDK** to ingest complex PDFs, DOCX, and PPTX files, perfectly preserving tables, layouts, and structures as LLM-readable Markdown.
-
-### ⚡ Real-Time SSE Streaming
-No more waiting 10 seconds for a response. The backend leverages `astream_events` to pipe **Server-Sent Events (SSE)** directly to the client. The frontend receives millisecond-level updates on what the AI is doing:
-- `{"type": "tool_start", "tool": "search_uploaded_documents"}`
-- `{"type": "token", "content": "H"}`
-
-### 🏭 Document Generation & AWS S3
-The LLM has the autonomous ability to generate comprehensive reports (PDFs, TXT, CSV) on the fly, upload them directly to a secure **AWS S3** bucket, and return a 1-hour expiring Pre-Signed Download URL to the user.
-
-### 🔒 Enterprise Security
-- **JWT Auth**: Full native `bcrypt` password hashing and JWT token generation.
-- **Tenant Isolation**: Every document vector in Qdrant and every message in PostgreSQL is strictly scoped to `user_id` and `conversation_id`, guaranteeing zero cross-tenant data leakage.
-
----
-
-## 🛠 Tech Stack
-
-| Component | Technology |
-|---|---|
-| **Backend Framework** | FastAPI `[standard]` (Fully Asynchronous) |
-| **Orchestration** | LangGraph + LangChain 1.x |
-| **Database (Relational)** | PostgreSQL (via Async SQLAlchemy & asyncpg) |
-| **Database (Vector)** | Qdrant (via `langchain-qdrant`) |
-| **Cloud Storage** | AWS S3 (via `boto3` & `aioboto3`) |
-| **Document Parser** | LlamaCloud (`AsyncLlamaCloud`) |
-| **Web Search** | Tavily |
-| **Security** | native `bcrypt` + `python-jose` |
-
----
-
-## 🚀 Setup & Installation
-
-### 1. Requirements
-- Python 3.10+
-- PostgreSQL instance (Local or AWS RDS)
-- Qdrant instance (Local Docker or Qdrant Cloud)
-- AWS S3 Bucket + IAM Credentials
-
-### 2. Environment Variables
-Copy `.env.example` to `.env` and fill in your keys:
-```bash
-cp .env.example .env
+```text
+praxis-ai/
+├── app/
+│   ├── main.py             # FastAPI entry point & routers
+│   ├── database.py         # PostgreSQL connection & helpers
+│   ├── schemas.py          # Pydantic validation models
+│   └── config.py           # Environment variables (pydantic-settings)
+├── agents/
+│   ├── orchestrator.py     # CEO langgraph routing logic
+│   ├── tools.py            # LangChain tool definitions (Tavily, arXiv, Qdrant)
+│   └── subgraphs/
+│       ├── knowledge_team.py
+│       └── research_team.py
+├── prompts/
+│   ├── orchestrator_prompts.py
+│   ├── knowledge_prompts.py
+│   └── research_prompts.py
+├── scripts/
+│   └── ingestion.py        # Standalone LlamaParse + Qdrant ingester
+├── .env                    # Secrets (OpenAI, Qdrant, RDS, etc.)
+└── requirements.txt
 ```
 
-### 3. Installation
-Install the required packages using pip:
+## 🚀 Setup and Installation
+
+### 1. Prerequisites
+- Python 3.10+ (or Conda)
+- AWS RDS (PostgreSQL) or local Postgres
+- Qdrant Cloud or local Docker instance
+- API Keys: OpenAI, Tavily, LlamaCloud
+
+### 2. Install Dependencies
 ```bash
+conda create -n mgpt python=3.13
+conda activate mgpt
 pip install -r requirements.txt
 ```
 
-### 4. Run the Server
-Start the fully asynchronous FastAPI server. The database tables will be auto-generated on startup.
-```bash
-uvicorn main:app --reload
+### 3. Environment Variables
+Create a `.env` file in the root directory:
+```env
+OPENAI_API_KEY=sk-...
+TAVILY_API_KEY=tvly-...
+LLAMA_CLOUD_API_KEY=llx-...
+
+POSTGRES_HOST=your-rds-endpoint.amazonaws.com
+POSTGRES_PORT=5432
+POSTGRES_USER=praxis
+POSTGRES_PASSWORD="your_password_in_quotes_if_special_chars_present"
+POSTGRES_DB=postgres
+
+QDRANT_URL=https://your-cluster.qdrant.tech
+QDRANT_API_KEY=your_key
+QDRANT_COLLECTION_NAME=collection
 ```
 
----
+### 4. Run the API Server
+```bash
+python -m app.main
+```
+*(The server will start on `http://0.0.0.0:8000`. Database tables are created automatically on startup).*
 
-## 📁 API Flow
+## 📖 API Usage
 
-1. **`POST /api/auth/register`** — Create an account.
-2. **`POST /api/auth/login`** — Get your JWT Bearer Token.
-3. **`POST /api/chat/conversations`** — Initialize a new chat room.
-4. **`POST /api/documents/upload/{conversation_id}`** — Upload a PDF to LlamaCloud & Qdrant.
-5. **`POST /api/chat/conversations/{conversation_id}/messages`** — Send a message (`stream=true`), trigger the LangGraph agent, and watch the SSE stream fly!
+**1. Create a User**
+```bash
+curl -X POST http://localhost:8000/api/v1/users \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com"}'
+```
 
----
-*Built with LangChain · LangGraph · FastAPI · Qdrant · PostgreSQL · AWS S3*
+**2. Create a Conversation**
+```bash
+curl -X POST http://localhost:8000/api/v1/conversations \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "<uuid>", "title": "First Session"}'
+```
 
-
-#check for cicd
+**3. Chat!**
+```bash
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "<uuid>",
+    "user_id": "<uuid>",
+    "message": "Do a thorough research on the impact of attention mechanisms in NLP"
+  }'
+```
+*(The CEO will automatically route this to the `research_team`, which will perform loops of web and academic searches before returning a comprehensive markdown report).*
