@@ -6,24 +6,23 @@ Validates the Bearer JWT on every protected route and returns the
 decoded user dict so handlers never have to touch token logic.
 """
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError
 
 from app.auth.security import decode_access_token
 
-# Tells FastAPI where clients should POST to get a token (used in /docs UI)
-_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# Clean Bearer auth scheme for Swagger UI — prompts directly for JWT token
+_security_scheme = HTTPBearer()
 
 
 async def get_current_user(
-    token: str = Depends(_oauth2_scheme),
-    # Pool is injected via the app.state trick — see note below
-    # We use a Request dependency here to stay modular
+    auth: HTTPAuthorizationCredentials = Depends(_security_scheme),
 ) -> dict:
     """
-    Decode the JWT, look up the user in the DB, and return the user dict.
+    Decode the JWT, extract identity, and return user dict.
     Used as: current_user: dict = Depends(get_current_user)
     """
+    token = auth.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token.",
