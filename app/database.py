@@ -5,10 +5,13 @@ from app.config import Settings
 # --- DDL ---------------------------------------------------------------
 
 _CREATE_TABLES_SQL = """
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email       VARCHAR(255) UNIQUE NOT NULL,
-    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email           VARCHAR(255) UNIQUE NOT NULL,
+    hashed_password TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS conversations (
@@ -26,6 +29,24 @@ CREATE TABLE IF NOT EXISTS messages (
     content         TEXT NOT NULL,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    token      TEXT UNIQUE NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+_ADD_HASHED_PASSWORD_COL = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS hashed_password TEXT NOT NULL DEFAULT '';
+"""
+
+# Tracks whether a conversation has ever had at least one document ingested for it.
+# The CEO uses this as a hard gate — knowledge_team is never reachable if False.
+_ADD_CONVERSATION_HAS_DOCUMENTS_COL = """
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS has_documents BOOLEAN NOT NULL DEFAULT FALSE;
 """
 
 # --- Pool lifecycle ----------------------------------------------------
@@ -43,6 +64,8 @@ async def init_db_pool(settings: Settings) -> asyncpg.Pool:
     )
     async with pool.acquire() as conn:
         await conn.execute(_CREATE_TABLES_SQL)
+        await conn.execute(_ADD_HASHED_PASSWORD_COL)
+        await conn.execute(_ADD_CONVERSATION_HAS_DOCUMENTS_COL)  # idempotent — safe on every startup
     return pool
 
 
@@ -52,10 +75,16 @@ async def get_history(pool: asyncpg.Pool, conversation_id: str, limit: int = 20)
     """Return the last `limit` messages for a conversation, oldest first."""
     rows = await pool.fetch(
         """
-        SELECT role, content FROM messages
-        WHERE conversation_id = $1
+        WITH recent_messages AS (
+            SELECT role, content, created_at
+            FROM messages
+            WHERE conversation_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+        )
+        SELECT role, content
+        FROM recent_messages
         ORDER BY created_at ASC
-        LIMIT $2
         """,
         conversation_id,
         limit,
@@ -86,14 +115,122 @@ async def create_conversation(pool: asyncpg.Pool, user_id: str, title: str = "Ne
     return str(row["id"])
 
 
-async def create_user(pool: asyncpg.Pool, email: str) -> str:
-    """Create a new user (or return existing) and return its UUID."""
+async def get_conversations_by_user(pool: asyncpg.Pool, user_id: str) -> list[dict]:
+    """Return all conversations belonging to a user, newest first."""
+    rows = await pool.fetch(
+        """
+        SELECT id, title, created_at, updated_at
+        FROM conversations
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+        """,
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def create_user(pool: asyncpg.Pool, email: str, hashed_password: str) -> str:
+    """Create a new user with a hashed password and return its UUID."""
     row = await pool.fetchrow(
         """
-        INSERT INTO users (email) VALUES ($1)
-        ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+        INSERT INTO users (email, hashed_password) VALUES ($1, $2)
         RETURNING id
         """,
-        email,
+        email, hashed_password,
     )
     return str(row["id"])
+
+
+async def get_user_by_email(pool: asyncpg.Pool, email: str) -> dict | None:
+    """Fetch a user row by email. Returns None if not found."""
+    row = await pool.fetchrow(
+        "SELECT id, email, hashed_password FROM users WHERE email = $1",
+        email,
+    )
+    return dict(row) if row else None
+
+
+async def get_user_by_id(pool: asyncpg.Pool, user_id: str) -> dict | None:
+    """Fetch a user row by UUID. Returns None if not found."""
+    row = await pool.fetchrow(
+        "SELECT id, email FROM users WHERE id = $1",
+        user_id,
+    )
+    return dict(row) if row else None
+
+
+# --- Refresh token helpers --------------------------------------------
+
+async def save_refresh_token(
+    pool: asyncpg.Pool,
+    user_id: str,
+    token: str,
+    expires_at,          # datetime object
+) -> None:
+    """Persist a refresh token to the DB."""
+    await pool.execute(
+        """
+        INSERT INTO refresh_tokens (user_id, token, expires_at)
+        VALUES ($1, $2, $3)
+        """,
+        user_id, token, expires_at,
+    )
+
+
+async def get_refresh_token(pool: asyncpg.Pool, token: str) -> dict | None:
+    """
+    Fetch a refresh token row.
+    Returns None if not found OR if already expired.
+    """
+    row = await pool.fetchrow(
+        """
+        SELECT id, user_id, expires_at
+        FROM refresh_tokens
+        WHERE token = $1
+          AND expires_at > CURRENT_TIMESTAMP
+        """,
+        token,
+    )
+    return dict(row) if row else None
+
+
+async def delete_refresh_token(pool: asyncpg.Pool, token: str) -> None:
+    """Revoke a single refresh token (logout current device)."""
+    await pool.execute(
+        "DELETE FROM refresh_tokens WHERE token = $1",
+        token,
+    )
+
+
+async def delete_all_user_refresh_tokens(pool: asyncpg.Pool, user_id: str) -> None:
+    """Revoke ALL refresh tokens for a user (logout all devices)."""
+    await pool.execute(
+        "DELETE FROM refresh_tokens WHERE user_id = $1",
+        user_id,
+    )
+
+
+# --- Document ownership flag ------------------------------------------
+
+async def mark_conversation_has_documents(pool: asyncpg.Pool, conversation_id: str) -> None:
+    """
+    Flip has_documents = TRUE for a conversation after its first successful ingest.
+    Using OR to make it idempotent — safe to call on every ingest.
+    """
+    await pool.execute(
+        "UPDATE conversations SET has_documents = TRUE WHERE id = $1",
+        conversation_id,
+    )
+
+
+async def get_conversation_has_documents(pool: asyncpg.Pool, conversation_id: str) -> bool:
+    """
+    Return True if the conversation has ever had at least one document ingested.
+    Used by the CEO as a hard gate before routing to knowledge_team.
+    """
+    row = await pool.fetchrow(
+        "SELECT has_documents FROM conversations WHERE id = $1",
+        conversation_id,
+    )
+    return bool(row["has_documents"]) if row else False
+

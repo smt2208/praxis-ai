@@ -18,7 +18,7 @@ from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_
 
 
 # --- Constants ---------------------------------------------------------
-MAX_RESEARCH_ITERATIONS = 3
+MAX_RESEARCH_ITERATIONS = 5
 
 
 # --- Private state -----------------------------------------------------
@@ -46,8 +46,10 @@ def planner_node(state: ResearchState) -> dict:
     ]
     response = _llm.invoke(messages)
     # Parse numbered list into python list
-    lines = [l.strip() for l in response.content.strip().split("\n") if l.strip()]
-    plan = [l.lstrip("0123456789. )") .strip() for l in lines if l]
+    lines = [line.strip() for line in response.content.strip().split("\n") if line.strip()]
+    plan = [line.lstrip("0123456789. )").strip() for line in lines if line]
+    if not plan:
+        plan = [state["query"]]
     return {"research_plan": plan, "iteration": 0}
 
 
@@ -60,6 +62,8 @@ def researcher_node(state: ResearchState) -> dict:
     """
     # Determine which step to work on based on iteration count
     plan = state["research_plan"]
+    if not plan:
+        plan = [state["query"]]
     iteration = state["iteration"]
     step_idx = min(iteration, len(plan) - 1)
     current_step = plan[step_idx]

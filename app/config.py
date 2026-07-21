@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # LlamaCloud
     llama_cloud_api_key: str
 
+    # JWT
+    secret_key: str
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30        # 30 minutes — keep short
+    refresh_token_expire_days: int = 7           # 7 days — stored in DB
+
     # Supabase (optional — for future auth/REST integration)
     supabase_url: str = ""
     supabase_anon_key: str = ""

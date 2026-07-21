@@ -91,7 +91,7 @@ praxis-ai/
 
 ### 2. Install Dependencies
 ```bash
-conda create -n mgpt python=3.13
+conda create -n mgpt python=3.11
 conda activate mgpt
 pip install -r requirements.txt
 ```

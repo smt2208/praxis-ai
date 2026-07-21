@@ -5,16 +5,17 @@ The CEO — main stateless LangGraph orchestrator.
 Reads injected chat history, routes to the right department,
 and returns the final answer. No checkpointer — fully stateless.
 """
-from typing import TypedDict, Literal
+from typing import TypedDict, Literal, Annotated
+from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import create_react_agent
-from typing import Annotated
 
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
+from agents.subgraphs.general_agent import run_general_agent
 from prompts.orchestrator_prompts import ROUTER_SYSTEM
 
 
@@ -23,8 +24,18 @@ from prompts.orchestrator_prompts import ROUTER_SYSTEM
 class OrchestratorState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     query: str
+    user_id: str       # propagated from JWT — needed by knowledge_team for doc isolation
+    conversation_id: str # needed to scope docs to this specific thread
+    has_documents: bool  # hard gate — if False, knowledge_team route is blocked in code
     route: str
     final_answer: str
+
+
+# --- Structured routing output -----------------------------------------
+
+class RouteDecision(BaseModel):
+    """The CEO must output exactly this schema — no free-form text."""
+    route: Literal["knowledge_team", "research_team", "follow_up", "general"]
 
 
 # --- LLMs --------------------------------------------------------------
@@ -32,17 +43,16 @@ class OrchestratorState(TypedDict):
 _ceo_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 _followup_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 
-# Routing choices as a Literal for structured output
-_ROUTES = Literal["knowledge_team", "research_team", "follow_up"]
+# Bind structured output once — reuse on every call
+_router_llm = _ceo_llm.with_structured_output(RouteDecision)
 
 
 # --- Node: CEO (Router) ------------------------------------------------
 
 def ceo_node(state: OrchestratorState) -> dict:
     """Analyze the conversation and route to the correct department."""
-    # Build routing prompt with full history context
     history_text = "\n".join(
-        f"{m.type.upper()}: {m.content}" for m in state["messages"][:-1]  # all but latest
+        f"{m.type.upper()}: {m.content}" for m in state["messages"][:-1]
     )
     routing_messages = [
         SystemMessage(content=ROUTER_SYSTEM),
@@ -53,20 +63,24 @@ def ceo_node(state: OrchestratorState) -> dict:
             f"User message: {state['query']}"
         )),
     ]
-    response = _ceo_llm.invoke(routing_messages)
-    route = response.content.strip().lower()
+    # with_structured_output guarantees a valid RouteDecision — no text parsing
+    decision: RouteDecision = _router_llm.invoke(routing_messages)
+    route = decision.route
 
-    # Fallback safety
-    if route not in ("knowledge_team", "research_team", "follow_up"):
-        route = "knowledge_team"
+    # Hard gate: if the user has never uploaded a document, knowledge_team is unreachable.
+    # This cannot be bypassed by prompt injection — it's enforced in Python.
+    if route == "knowledge_team" and not state["has_documents"]:
+        route = "general"
 
     return {"route": route}
+
 
 
 # --- Node: Knowledge Team wrapper --------------------------------------
 
 def knowledge_team_node(state: OrchestratorState) -> dict:
-    answer = run_knowledge_team(state["query"])
+    """Delegates to Knowledge Team with user_id and conversation_id for document isolation."""
+    answer = run_knowledge_team(state["query"], user_id=state["user_id"], conversation_id=state["conversation_id"])
     return {"final_answer": answer}
 
 
@@ -74,6 +88,14 @@ def knowledge_team_node(state: OrchestratorState) -> dict:
 
 def research_team_node(state: OrchestratorState) -> dict:
     answer = run_research_team(state["query"])
+    return {"final_answer": answer}
+
+
+# --- Node: General Agent ----------------------------------------------
+
+def general_agent_node(state: OrchestratorState) -> dict:
+    """Handles everyday questions with web search — ChatGPT-like experience."""
+    answer = run_general_agent(state["query"], state["messages"][:-1])  # history without latest
     return {"final_answer": answer}
 
 
@@ -101,6 +123,7 @@ def _build_main_graph():
     builder.add_node("ceo", ceo_node)
     builder.add_node("knowledge_team_node", knowledge_team_node)
     builder.add_node("research_team_node", research_team_node)
+    builder.add_node("general_agent_node", general_agent_node)
     builder.add_node("follow_up_node", follow_up_node)
 
     builder.add_edge(START, "ceo")
@@ -110,11 +133,13 @@ def _build_main_graph():
         {
             "knowledge_team": "knowledge_team_node",
             "research_team": "research_team_node",
+            "general": "general_agent_node",
             "follow_up": "follow_up_node",
         },
     )
     builder.add_edge("knowledge_team_node", END)
     builder.add_edge("research_team_node", END)
+    builder.add_edge("general_agent_node", END)
     builder.add_edge("follow_up_node", END)
 
     # No checkpointer → fully stateless execution
@@ -126,14 +151,16 @@ main_graph = _build_main_graph()
 
 # --- Public invoke function -------------------------------------------
 
-def invoke_graph(query: str, history: list[dict]) -> dict:
+def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool) -> dict:
     """
-    history: list of {"role": "user"|"assistant", "content": "..."} dicts
+    history        : list of {"role": "user"|"assistant", "content": "..."} dicts
+    user_id        : UUID string from the decoded JWT — used for per-user doc isolation
+    conversation_id: UUID string representing the active chat thread
+    has_documents  : True only if the conversation has successfully ingested at least one document
     Returns {"answer": str, "route": str}
     """
     from langchain_core.messages import HumanMessage, AIMessage
 
-    # Convert history dicts → LangChain messages
     messages: list[BaseMessage] = []
     for msg in history:
         if msg["role"] == "user":
@@ -141,12 +168,14 @@ def invoke_graph(query: str, history: list[dict]) -> dict:
         else:
             messages.append(AIMessage(content=msg["content"]))
 
-    # Append latest user message
     messages.append(HumanMessage(content=query))
 
     result = main_graph.invoke({
         "messages": messages,
         "query": query,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "has_documents": has_documents,
         "route": "",
         "final_answer": "",
     })
