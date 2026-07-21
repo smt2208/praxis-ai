@@ -76,11 +76,21 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
     from langchain_qdrant import FastEmbedSparse
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-    # Only return documents that belong to this user AND this specific conversation
+    # Match both root payload keys and metadata nested payload keys (langchain_qdrant payload structure)
     user_filter = Filter(
-        must=[
-            FieldCondition(key="user_id", match=MatchValue(value=user_id)),
-            FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id))
+        should=[
+            Filter(
+                must=[
+                    FieldCondition(key="user_id", match=MatchValue(value=user_id)),
+                    FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id)),
+                ]
+            ),
+            Filter(
+                must=[
+                    FieldCondition(key="metadata.user_id", match=MatchValue(value=user_id)),
+                    FieldCondition(key="metadata.conversation_id", match=MatchValue(value=conversation_id)),
+                ]
+            ),
         ]
     )
 
