@@ -40,8 +40,8 @@ class RouteDecision(BaseModel):
 
 # --- LLMs --------------------------------------------------------------
 
-_ceo_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-_followup_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+_ceo_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
+_followup_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0.7)
 
 # Bind structured output once — reuse on every call
 _router_llm = _ceo_llm.with_structured_output(RouteDecision)

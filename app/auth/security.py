@@ -13,27 +13,29 @@ Token strategy:
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.config import get_settings
 
 settings = get_settings()
-
-# bcrypt context — only bcrypt, no MD5/SHA1 fallbacks
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # --- Password helpers --------------------------------------------------
 
 def hash_password(plain: str) -> str:
     """Return a bcrypt hash of the plain-text password."""
-    return _pwd_context.hash(plain)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(plain.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored bcrypt *hashed* value."""
-    return _pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode('utf-8'), hashed.encode('utf-8'))
+    except (ValueError, TypeError):
+        return False
 
 
 # --- Access token (JWT) -----------------------------------------------

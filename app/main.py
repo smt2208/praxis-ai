@@ -208,7 +208,10 @@ async def chat(
 
     # 2. Run the stateless multi-agent graph
     try:
-        result = invoke_graph(
+        # Offload the synchronous LangGraph execution to a worker thread
+        # This prevents the FastAPI async event loop from freezing while the LLM generates!
+        result = await asyncio.to_thread(
+            invoke_graph,
             query=body.message,
             history=history,
             user_id=current_user["id"],

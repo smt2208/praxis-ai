@@ -12,6 +12,7 @@ Called by the POST /api/v1/ingest endpoint.
 """
 import os
 import tempfile
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -148,18 +149,20 @@ async def ingest_document(
         cleanup = False
 
     try:
-        # Parse
+        # Parse (synchronous blocking network call -> send to thread)
         print(f"[ingestion] Parsing: {file_path.name}")
-        pages = parse_document(file_path)
+        pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
             raise ValueError("LlamaParse returned no text from the document.")
 
-        # Chunk — tag every chunk with user_id and conversation_id
-        docs = chunk_texts(pages, source=source_url, user_id=user_id, conversation_id=conversation_id)
+        # Chunk (CPU bound -> send to thread)
+        docs = await asyncio.to_thread(
+            chunk_texts, pages, source_url, user_id, conversation_id
+        )
         print(f"[ingestion] Created {len(docs)} chunks from {len(pages)} pages.")
 
-        # Store
-        count = store_documents(docs, target_collection)
+        # Store (synchronous blocking network call to OpenAI & Qdrant -> send to thread)
+        count = await asyncio.to_thread(store_documents, docs, target_collection)
         print(f"[ingestion] Stored {count} chunks in '{target_collection}' for user '{user_id}'.")
         return count
 

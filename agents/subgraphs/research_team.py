@@ -33,7 +33,7 @@ class ResearchState(TypedDict):
 
 # --- LLM ---------------------------------------------------------------
 
-_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
 
 
 # --- Node: Planner -----------------------------------------------------
