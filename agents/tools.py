@@ -24,10 +24,38 @@ tavily_tool = TavilySearchResults(max_results=5, topic="general")
 
 
 # --- Arxiv (academic papers) -------------------------------------------
-_arxiv_wrapper = ArxivAPIWrapper(top_k_results=3, doc_content_chars_max=4000)
+def _search_arxiv(query: str) -> str:
+    """Search arXiv academic papers safely across different SDK versions."""
+    try:
+        import arxiv
+        if hasattr(arxiv, "Client"):
+            client = arxiv.Client()
+            search = arxiv.Search(query=query, max_results=3, sort_by=arxiv.SortCriterion.Relevance)
+            results = list(client.results(search))
+        else:
+            search = arxiv.Search(query=query, max_results=3)
+            results = list(search.results())
+
+        if not results:
+            return "No relevant arXiv papers found for this query."
+
+        formatted = []
+        for r in results:
+            summary = r.summary.replace("\n", " ")[:1000]
+            formatted.append(
+                f"Title: {r.title}\n"
+                f"Authors: {', '.join(a.name for a in r.authors)}\n"
+                f"URL: {r.entry_id}\n"
+                f"Summary: {summary}"
+            )
+        return "\n\n---\n\n".join(formatted)
+    except Exception as e:
+        return f"arXiv search failed: {str(e)}"
+
+
 arxiv_tool = Tool(
     name="arxiv_search",
-    func=_arxiv_wrapper.run,
+    func=_search_arxiv,
     description=(
         "Search academic papers on arXiv. Use for scientific, technical, "
         "or research-heavy questions. Input should be a search query string."
