@@ -24,9 +24,12 @@ Endpoints:
 import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+import os
+import shutil
+import tempfile
 
 import asyncpg
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from qdrant_client import QdrantClient
@@ -257,6 +260,43 @@ async def ingest(
 
     return IngestResponse(
         message="Document ingested successfully.",
+        documents_stored=count,
+    )
+
+@app.post("/api/v1/ingest/file", response_model=IngestResponse, tags=["Ingestion"])
+async def ingest_file(
+    file: UploadFile = File(...),
+    conversation_id: str = Form(...),
+    collection_name: str | None = Form(None),
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Ingest a document directly via file upload (multipart/form-data).
+    """
+    # Create temp file with the same extension
+    _, ext = os.path.splitext(file.filename or "")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        count = await ingest_document(
+            source_url=tmp_path,  # ingest_document handles local paths if they don't start with http
+            user_id=current_user["id"],
+            conversation_id=conversation_id,
+            collection_name=collection_name,
+        )
+        await mark_conversation_has_documents(pool, conversation_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion error: {str(e)}")
+    finally:
+        # We must clean up the local file since ingest_document skips cleanup for local files
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    return IngestResponse(
+        message="File ingested successfully.",
         documents_stored=count,
     )
 

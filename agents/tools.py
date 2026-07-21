@@ -4,7 +4,7 @@ All LangChain tool instances used across the swarm.
 Initialized once at import time.
 """
 import os
-from langchain_tavily import TavilySearch
+from langchain_tavily import TavilySearchResults
 from langchain_community.utilities import ArxivAPIWrapper
 from langchain_core.tools import Tool
 from langchain_openai import OpenAIEmbeddings
@@ -20,7 +20,7 @@ os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 
 
 # --- Tavily (general web + news) ----------------------------------------
-tavily_tool = TavilySearch(max_results=5, topic="general")
+tavily_tool = TavilySearchResults(max_results=5, topic="general")
 
 
 # --- Arxiv (academic papers) -------------------------------------------
