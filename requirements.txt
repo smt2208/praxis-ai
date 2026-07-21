@@ -8,6 +8,7 @@ asyncpg>=0.29.0
 # Config
 pydantic>=2.7.0
 pydantic-settings>=2.3.0
+email-validator>=2.0.0
 
 # LangChain core + integrations
 langchain>=0.3.0
