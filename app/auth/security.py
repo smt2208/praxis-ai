@@ -92,7 +92,7 @@ def create_refresh_token() -> tuple[str, datetime]:
         a blocklist — which adds DB complexity anyway.
     """
     token = secrets.token_urlsafe(64)       # 86-char URL-safe base64 string
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = (datetime.now(timezone.utc) + timedelta(
         days=settings.refresh_token_expire_days
-    )
+    )).replace(tzinfo=None)
     return token, expires_at

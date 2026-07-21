@@ -124,7 +124,10 @@ def critic_node(state: KnowledgeState) -> dict:
 
     if score.passed:
         return {"critic_feedback": ""}          # Clears feedback → graph ends
-    return {"critic_feedback": score.feedback}  # Non-empty → retry synthesizer
+    return {
+        "critic_feedback": score.feedback, 
+        "retry_count": state.get("retry_count", 0) + 1
+    }
 
 
 # --- Routing: should we retry or are we done? -------------------------
