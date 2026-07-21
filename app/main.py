@@ -251,7 +251,6 @@ async def ingest(
             source_url=body.source_url,
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
-            collection_name=body.collection_name,
         )
         # Flip the conversation's has_documents flag so the CEO can route to knowledge_team
         await mark_conversation_has_documents(pool, body.conversation_id)
@@ -267,7 +266,6 @@ async def ingest(
 async def ingest_file(
     file: UploadFile = File(...),
     conversation_id: str = Form(...),
-    collection_name: str | None = Form(None),
     pool: asyncpg.Pool = Depends(get_pool),
     current_user: dict = Depends(get_current_user),
 ):
@@ -285,7 +283,6 @@ async def ingest_file(
             source_url=tmp_path,  # ingest_document handles local paths if they don't start with http
             user_id=current_user["id"],
             conversation_id=conversation_id,
-            collection_name=collection_name,
         )
         await mark_conversation_has_documents(pool, conversation_id)
     except Exception as e:

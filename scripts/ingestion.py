@@ -128,14 +128,13 @@ async def ingest_document(
     source_url: str,
     user_id: str,
     conversation_id: str,
-    collection_name: str | None = None,
 ) -> int:
     """
     Full pipeline: download → parse → chunk → embed → store.
     Every chunk is tagged with user_id and conversation_id so retrieval can filter per-conversation.
     Returns the number of chunks stored.
     """
-    target_collection = collection_name or settings.qdrant_collection_name
+    target_collection = settings.qdrant_collection_name
 
     # Download file
     is_remote = source_url.startswith("http://") or source_url.startswith("https://")
