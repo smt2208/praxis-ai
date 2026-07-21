@@ -42,7 +42,7 @@ async def get_current_user(
 
 
 async def get_current_user_with_db(
-    token: str = Depends(_oauth2_scheme),
+    auth: HTTPAuthorizationCredentials = Depends(_security_scheme),
     # We accept the pool via a separate dependency injected in main.py
 ) -> dict:
     """
