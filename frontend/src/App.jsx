@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/common/Navbar';
 import { HeroSection } from './components/landing/HeroSection';
@@ -26,6 +26,7 @@ const MainLayout = () => {
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
+  const initialChatCreatedRef = useRef(false);
 
   // Switch to chat view if authenticated and user clicks launch
   useEffect(() => {
@@ -40,9 +41,10 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // On initial login/load: always start with a fresh new chat thread (like ChatGPT & Claude)
-      if (!activeConvId) {
-        handleCreateNewConversation();
+      // On initial login / workspace launch: always start with a fresh new chat thread ONCE
+      if (!initialChatCreatedRef.current) {
+        initialChatCreatedRef.current = true;
+        await handleCreateNewConversation();
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
@@ -64,10 +66,20 @@ const MainLayout = () => {
 
   const handleCreateNewConversation = async () => {
     try {
-      const newConv = await api.createConversation(`Session #${conversations.length + 1}`);
+      const newConv = await api.createConversation('New Conversation');
       const convId = newConv.conversation_id;
+      
+      // Update state directly — NO recursive loadConversations() call!
       setActiveConvId(convId);
-      loadConversations();
+      setConversations((prev) => [
+        {
+          conversation_id: convId,
+          title: 'New Conversation',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
     } catch (err) {
       console.error('Failed to create new conversation:', err);
     }
