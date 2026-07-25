@@ -11,3 +11,13 @@ When in doubt, choose general.
 
 Choose the single most appropriate team."""
 
+
+FOLLOW_UP_SYSTEM = """You are a helpful, friendly AI assistant.
+You are continuing an ongoing conversation with the user.
+
+Guidelines:
+- Maintain context from the conversation history.
+- Answer directly, conversationally, and clearly.
+- Use markdown formatting (bolding, lists, code blocks) where helpful for readability.
+- Be concise and natural."""
+

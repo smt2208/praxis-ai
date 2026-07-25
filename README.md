@@ -2,9 +2,11 @@
 
 **Praxis AI** is a robust, stateless, hierarchical Multi-Agent API built for complex reasoning and enterprise-scale task execution. Instead of relying on a single monolithic prompt, Praxis AI operates like a digital corporation: a top-level **CEO Orchestrator** analyzes user requests and dynamically routes them to specialized AI sub-teams (e.g., Knowledge Team or Research Team) for precise, cost-effective, and hallucination-resistant responses.
 
+---
+
 ## 🏗 Architecture
 
-The system utilizes a fully stateless design via `langgraph`, meaning memory is persisted in a PostgreSQL database and injected per-request, enabling infinite horizontal scaling.
+The system utilizes a fully stateless design via `langgraph`, meaning conversational memory is persisted in a PostgreSQL database and injected per-request, enabling infinite horizontal scaling across cloud instances.
 
 ```mermaid
 graph TD
@@ -16,12 +18,12 @@ graph TD
 
     %% Components
     User([👤 User Client]):::client
-    API[⚡ FastAPI Backend]:::api
+    API[⚡ FastAPI Backend & JWT Middleware]:::api
     DB[(🐘 RDS PostgreSQL)]:::db
     Qdrant[(💠 Qdrant Hybrid DB)]:::db
     Web((🌐 Web / ArXiv)):::db
     
-    subgraph LangGraph [🤖 Autonomous Multi-Agent Swarm]
+    subgraph LangGraph [🤖 Hierarchical Multi-Agent Platform]
         CEO{🧠 CEO Orchestrator}:::agent
         Knowledge[📚 Knowledge Team]:::agent
         Research[🔬 Research Team]:::agent
@@ -29,8 +31,8 @@ graph TD
     end
 
     %% Flow
-    User -- 1. POST /chat --> API
-    API <-- 2. Load & Save History --> DB
+    User -- 1. Auth & Request (Bearer JWT) --> API
+    API <-- 2. Validate Token & Load History --> DB
     
     API -- 3. Execute Graph --> CEO
     
@@ -45,48 +47,74 @@ graph TD
     Research -- 5. Report --> API
     FollowUp -- 5. Chat --> API
     
-    API -- 6. JSON Response --> User
+    API -- 6. Save State & Return JSON --> User
 ```
+
+---
 
 ## ✨ Key Features
 
-- **Stateless Execution:** State is maintained via `asyncpg` connected to AWS RDS, avoiding memory bloat and enabling stateless horizontal scaling.
-- **Hierarchical Swarm:** Uses `langgraph` to isolate state within sub-teams (Knowledge vs. Research), preventing context pollution.
-- **Hybrid Retrieval:** Qdrant vector store uses both dense (`text-embedding-3-small`) and sparse (`FastEmbedSparse BM25`) embeddings for maximum accuracy.
-- **Smart Ingestion Pipeline:** Document ingestion powered by `LlamaParse`, pulling data directly from URLs, chunking it, and upserting into the knowledge base.
-- **Safe Academic Research:** Dedicated arXiv tool wrapper (`arxiv==2.4.1`) combined with a multi-loop research agent writes extensive, cited literature reviews.
+- **Stateless Execution:** Conversation history is fetched from AWS RDS PostgreSQL and injected per-request, preventing memory bloat and enabling horizontal auto-scaling.
+- **Hierarchical Multi-Agent Architecture:** Powered by `langgraph` to isolate execution context between sub-teams (Knowledge vs. Research), reducing token usage and eliminating prompt pollution.
+- **Secure JWT Authentication:** Built-in registration, login, token refresh, and device revocation using `HS256` signed Access & Refresh tokens.
+- **Rate Limiting & Protection:** Built-in endpoint throttling (`slowapi`) preventing API abuse (e.g., 20 msgs/min per user).
+- **Hybrid Document Retrieval:** Qdrant vector store combining dense (`text-embedding-3-small`) and sparse (`FastEmbedSparse BM25`) embeddings with strict metadata filtering per `user_id` and `conversation_id`.
+- **Dual Ingestion Pipeline:** Document parsing powered by `LlamaParse` via public URL (`/api/v1/ingest`) or direct file upload (`/api/v1/ingest/file`).
+- **Academic & Web Research:** Automated multi-step research loops combining web search (Tavily) and paper metadata extraction (`arxiv`).
+- **Docker & CI/CD Ready:** Includes container setup (`Dockerfile`), deployment automation (`deploy.sh`), and GitHub Actions workflow (`.github/workflows/deploy.yml`).
 
-## 📂 Modular Project Structure
+---
+
+## 📂 Project Structure
 
 ```text
 praxis-ai/
 ├── app/
-│   ├── main.py             # FastAPI entry point & routers
-│   ├── database.py         # PostgreSQL connection & helpers
-│   ├── schemas.py          # Pydantic validation models
-│   └── config.py           # Environment variables (pydantic-settings)
+│   ├── main.py             # FastAPI entry point, middleware & router inclusion
+│   ├── database.py         # PostgreSQL connection pool & query helpers
+│   ├── dependencies.py     # Shared database pool dependency
+│   ├── schemas.py          # Pydantic request/response validation models
+│   ├── config.py           # Environment variables (pydantic-settings)
+│   ├── routers/            # Modular API Routers
+│   │   ├── chat.py         # Main /chat endpoint & auto-titling logic
+│   │   ├── conversations.py# /conversations endpoints
+│   │   ├── ingest.py       # URL & File ingestion endpoints
+│   │   └── health.py       # System health check endpoint
+│   ├── auth/               # Authentication module
+│   │   ├── router.py       # Auth endpoints (/register, /login, /refresh, /me)
+│   │   ├── security.py     # Password hashing & JWT generation
+│   │   └── dependencies.py # JWT bearer token validation dependencies
+│   └── middleware/         # App middleware
+│       └── rate_limit.py   # Slowapi rate-limiting configuration
 ├── agents/
-│   ├── orchestrator.py     # CEO langgraph routing logic
+│   ├── orchestrator.py     # CEO router node & LangGraph entry point
 │   ├── tools.py            # LangChain tool definitions (Tavily, arXiv, Qdrant)
 │   └── subgraphs/
-│       ├── knowledge_team.py
-│       └── research_team.py
+│       ├── knowledge_team.py # RAG + Web search synthesizer team
+│       └── research_team.py  # Multi-step academic research team
 ├── prompts/
 │   ├── orchestrator_prompts.py
 │   ├── knowledge_prompts.py
 │   └── research_prompts.py
 ├── scripts/
-│   └── ingestion.py        # Standalone LlamaParse + Qdrant ingester
-├── .env                    # Secrets (OpenAI, Qdrant, RDS, etc.)
-└── requirements.txt
+│   └── ingestion.py        # LlamaParse + Qdrant hybrid ingestion pipeline
+├── .github/
+│   └── workflows/
+│       └── deploy.yml      # CI/CD deployment pipeline to AWS EC2
+├── Dockerfile              # Docker container definition
+├── deploy.sh               # EC2 deployment automation script
+├── .env                    # Environment secrets
+└── requirements.txt        # Dependencies
 ```
+
+---
 
 ## 🚀 Setup and Installation
 
 ### 1. Prerequisites
 - Python 3.10+ (or Conda)
-- AWS RDS (PostgreSQL) or local Postgres
-- Qdrant Cloud or local Docker instance
+- AWS RDS (PostgreSQL) or local PostgreSQL instance
+- Qdrant Cloud or local Qdrant instance
 - API Keys: OpenAI, Tavily, LlamaCloud
 
 ### 2. Install Dependencies
@@ -99,51 +127,114 @@ pip install -r requirements.txt
 ### 3. Environment Variables
 Create a `.env` file in the root directory:
 ```env
+# API Server
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# PostgreSQL
+POSTGRES_HOST=your-rds-endpoint.amazonaws.com
+POSTGRES_PORT=5432
+POSTGRES_USER=praxis
+POSTGRES_PASSWORD="your_password_in_quotes_if_special_chars"
+POSTGRES_DB=postgres
+
+# Qdrant
+QDRANT_URL=http://your-qdrant-ip:6333
+QDRANT_API_KEY=your_qdrant_api_key
+QDRANT_COLLECTION_NAME=collection
+
+# API Keys
 OPENAI_API_KEY=sk-...
 TAVILY_API_KEY=tvly-...
 LLAMA_CLOUD_API_KEY=llx-...
 
-POSTGRES_HOST=your-rds-endpoint.amazonaws.com
-POSTGRES_PORT=5432
-POSTGRES_USER=praxis
-POSTGRES_PASSWORD="your_password_in_quotes_if_special_chars_present"
-POSTGRES_DB=postgres
-
-QDRANT_URL=https://your-cluster.qdrant.tech
-QDRANT_API_KEY=your_key
-QDRANT_COLLECTION_NAME=collection
+# JWT Auth Secret
+SECRET_KEY=your_super_secret_jwt_key
 ```
 
-### 4. Run the API Server
+### 4. Run Locally
 ```bash
 python -m app.main
 ```
-*(The server will start on `http://0.0.0.0:8000`. Database tables are created automatically on startup).*
+*(Server will run on `http://localhost:8000`. Swagger API docs available at `http://localhost:8000/docs`).*
 
-## 📖 API Usage
-
-**1. Create a User**
+### 5. Run via Docker
 ```bash
-curl -X POST http://localhost:8000/api/v1/users \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com"}'
+docker build -t praxis-backend .
+docker run -p 8000:8000 --env-file .env praxis-backend
 ```
 
-**2. Create a Conversation**
-```bash
-curl -X POST http://localhost:8000/api/v1/conversations \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "<uuid>", "title": "First Session"}'
-```
+---
 
-**3. Chat!**
+## 📖 API Usage Guide
+
+### 1. Register & Obtain JWT Token
 ```bash
-curl -X POST http://localhost:8000/api/v1/chat \
+curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "conversation_id": "<uuid>",
-    "user_id": "<uuid>",
-    "message": "Do a thorough research on the impact of attention mechanisms in NLP"
+    "email": "user@example.com",
+    "password": "securepassword123"
   }'
 ```
-*(The CEO will automatically route this to the `research_team`, which will perform loops of web and academic searches before returning a comprehensive markdown report).*
+*Response:*
+```json
+{
+  "access_token": "<YOUR_ACCESS_TOKEN>",
+  "refresh_token": "<YOUR_REFRESH_TOKEN>",
+  "token_type": "bearer"
+}
+```
+
+### 2. Create a Conversation
+```bash
+curl -X POST http://localhost:8000/api/v1/conversations \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Research Session"}'
+```
+*Response:*
+```json
+{
+  "conversation_id": "<CONVERSATION_UUID>"
+}
+```
+
+### 3. Ingest a Document
+**Option A: Public URL or S3 link**
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_url": "https://example.com/sample.pdf",
+    "conversation_id": "<CONVERSATION_UUID>"
+  }'
+```
+
+**Option B: Direct File Upload (Multipart Form)**
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest/file \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
+  -F "file=@/path/to/local/file.pdf" \
+  -F "conversation_id=<CONVERSATION_UUID>"
+```
+
+### 4. Send a Chat Request
+```bash
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation_id": "<CONVERSATION_UUID>",
+    "message": "Explain the architectural differences between Transformers and RNNs based on the literature."
+  }'
+```
+*Response:*
+```json
+{
+  "conversation_id": "<CONVERSATION_UUID>",
+  "answer": "...",
+  "route_taken": "research_team"
+}
+```

@@ -5,7 +5,13 @@ We already found this in internal docs:
 
 Search the web to add any missing context, latest updates, or verify facts. Be concise."""
 
-SYNTHESIZER_SYSTEM = """You are a precise AI assistant. Synthesize the two sources below into a single, coherent answer. Prefer internal doc facts; use web data for freshness. Do not repeat yourself. Be concise."""
+SYNTHESIZER_SYSTEM = """You are a precise AI assistant. Synthesize the internal knowledge base documents and web research into a clear, structured response.
+
+Guidelines:
+- If the user asks for a summary, overview, or explanation of an uploaded document, organize the answer with a high-level summary followed by key bullet points.
+- Prefer facts from the internal knowledge base documents.
+- Use web data when relevant to supplement freshness.
+- Be clear, well-structured, and factual."""
 
 SYNTHESIZER_HUMAN = """Question: {query}
 

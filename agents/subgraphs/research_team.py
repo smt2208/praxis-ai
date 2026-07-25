@@ -25,6 +25,7 @@ MAX_RESEARCH_ITERATIONS = 5
 
 class ResearchState(TypedDict):
     query: str
+    history_summary: str
     research_plan: list[str]          # Step-by-step checklist from planner
     findings: Annotated[list[str], operator.add]  # Accumulated, appended each loop
     iteration: int
@@ -40,9 +41,13 @@ _llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
 
 def planner_node(state: ResearchState) -> dict:
     """Break the query into a numbered research checklist."""
+    plan_prompt = state["query"]
+    if state.get("history_summary"):
+        plan_prompt = f"Context from previous conversation:\n{state['history_summary']}\n\nResearch Task: {state['query']}"
+
     messages = [
         SystemMessage(content=PLANNER_SYSTEM),
-        HumanMessage(content=state["query"]),
+        HumanMessage(content=plan_prompt),
     ]
     response = _llm.invoke(messages)
     # Parse numbered list into python list
@@ -132,13 +137,18 @@ research_graph = _build_research_graph()
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
-def run_research_team(query: str) -> str:
+def run_research_team(query: str, history: list = None) -> str:
     """
     Entry point for the parent CEO graph.
     Returns only the final report string.
     """
+    history_summary = ""
+    if history:
+        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+
     result = research_graph.invoke({
         "query": query,
+        "history_summary": history_summary,
         "research_plan": [],
         "findings": [],
         "iteration": 0,

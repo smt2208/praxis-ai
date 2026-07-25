@@ -32,6 +32,7 @@ from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN, CRI
 
 class KnowledgeState(TypedDict):
     query: str
+    history_summary: str
     user_id: str            # used to filter Qdrant
     conversation_id: str    # used to filter Qdrant to only THIS conversation's documents
     rag_results: str
@@ -68,14 +69,18 @@ def parallel_fetch_node(state: KnowledgeState) -> dict:
     # Build retriever scoped to this conversation — each call gets a fresh filtered retriever
     rag_tool = build_hybrid_retriever(user_id=state["user_id"], conversation_id=state["conversation_id"])
 
+    search_query = state["query"]
+    if state.get("history_summary"):
+        search_query = f"Context: {state['history_summary']}\nQuestion: {state['query']}"
+
     async def _run_rag() -> str:
         agent = create_react_agent(_llm, [rag_tool])
-        result = await agent.ainvoke({"messages": [HumanMessage(content=state["query"])]})
+        result = await agent.ainvoke({"messages": [HumanMessage(content=search_query)]})
         return result["messages"][-1].content
 
     async def _run_web() -> str:
         agent = create_react_agent(_llm, [tavily_tool])
-        prompt = f"Search for the latest information about: {state['query']}"
+        prompt = f"Search for the latest information about: {search_query}"
         result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
         return result["messages"][-1].content
 
@@ -168,10 +173,15 @@ knowledge_graph = _build_knowledge_graph()
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
-def run_knowledge_team(query: str, user_id: str, conversation_id: str) -> str:
+def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None) -> str:
     """Entry point for the parent CEO graph. Returns only the final answer string."""
+    history_summary = ""
+    if history:
+        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+
     result = knowledge_graph.invoke({
         "query": query,
+        "history_summary": history_summary,
         "user_id": user_id,
         "conversation_id": conversation_id,
         "rag_results": "",

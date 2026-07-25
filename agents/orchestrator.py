@@ -16,7 +16,7 @@ from langgraph.prebuilt import create_react_agent
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
-from prompts.orchestrator_prompts import ROUTER_SYSTEM
+from prompts.orchestrator_prompts import ROUTER_SYSTEM, FOLLOW_UP_SYSTEM
 
 
 # --- Orchestrator state (shared across all top-level nodes) ------------
@@ -80,14 +80,19 @@ def ceo_node(state: OrchestratorState) -> dict:
 
 def knowledge_team_node(state: OrchestratorState) -> dict:
     """Delegates to Knowledge Team with user_id and conversation_id for document isolation."""
-    answer = run_knowledge_team(state["query"], user_id=state["user_id"], conversation_id=state["conversation_id"])
+    answer = run_knowledge_team(
+        state["query"],
+        history=state["messages"][:-1],
+        user_id=state["user_id"],
+        conversation_id=state["conversation_id"],
+    )
     return {"final_answer": answer}
 
 
 # --- Node: Research Team wrapper ---------------------------------------
 
 def research_team_node(state: OrchestratorState) -> dict:
-    answer = run_research_team(state["query"])
+    answer = run_research_team(state["query"], history=state["messages"][:-1])
     return {"final_answer": answer}
 
 
@@ -103,7 +108,7 @@ def general_agent_node(state: OrchestratorState) -> dict:
 
 def follow_up_node(state: OrchestratorState) -> dict:
     """Handles conversational replies, rephrasing, or summaries using history."""
-    agent = create_react_agent(_followup_llm, [])  # no tools — history only
+    agent = create_react_agent(_followup_llm, [], prompt=FOLLOW_UP_SYSTEM)  # no tools — history only
     result = agent.invoke({"messages": state["messages"]})
     answer = result["messages"][-1].content
     return {"final_answer": answer}

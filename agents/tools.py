@@ -1,6 +1,6 @@
 """
 agents/tools.py
-All LangChain tool instances used across the swarm.
+All LangChain tool instances used across the multi-agent system.
 Initialized once at import time.
 """
 import os
@@ -128,6 +128,15 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
 
     def _run_retriever(query: str) -> str:
         docs = retriever.invoke(query)
+        
+        # Smart Summarization Fallback: If user asks for summary/overview and specific query yields sparse results,
+        # fallback to pulling broad structural chunks (e.g. introduction, main findings, page 1-3).
+        summary_keywords = ["summarize", "summary", "overview", "key points", "main findings", "about", "explain the doc"]
+        if (not docs or len(docs) < 2) and any(k in query.lower() for k in summary_keywords):
+            fallback_docs = retriever.invoke("introduction overview main points summary conclusion section 1")
+            if fallback_docs:
+                docs = fallback_docs
+
         if not docs:
             return "No relevant documents found in your knowledge base."
         return "\n\n---\n\n".join(

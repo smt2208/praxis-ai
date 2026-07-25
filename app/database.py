@@ -234,3 +234,20 @@ async def get_conversation_has_documents(pool: asyncpg.Pool, conversation_id: st
     )
     return bool(row["has_documents"]) if row else False
 
+
+async def get_conversation_title(pool: asyncpg.Pool, conversation_id: str) -> str:
+    """Return the current title of a conversation."""
+    row = await pool.fetchrow(
+        "SELECT title FROM conversations WHERE id = $1",
+        conversation_id,
+    )
+    return row["title"] if row else "New Conversation"
+
+
+async def update_conversation_title(pool: asyncpg.Pool, conversation_id: str, title: str) -> None:
+    """Update the title of a conversation."""
+    await pool.execute(
+        "UPDATE conversations SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+        title, conversation_id,
+    )
+
