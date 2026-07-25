@@ -40,10 +40,8 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // Select first conversation or auto-create if empty
-      if (list.length > 0 && !activeConvId) {
-        setActiveConvId(list[0].conversation_id);
-      } else if (list.length === 0) {
+      // On initial login/load: always start with a fresh new chat thread (like ChatGPT & Claude)
+      if (!activeConvId) {
         handleCreateNewConversation();
       }
     } catch (err) {

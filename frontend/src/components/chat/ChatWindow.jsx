@@ -153,7 +153,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onOpenIngest, onRefres
               <Cpu size={18} className="animate-pulse" />
             </div>
             <div className="message-content" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="animate-pulse">CEO Orchestrator is analyzing history & delegating...</span>
+              <span className="animate-pulse">Thinking...</span>
             </div>
           </div>
         )}

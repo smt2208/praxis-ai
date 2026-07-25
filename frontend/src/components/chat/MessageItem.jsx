@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { User, Cpu, BookOpen, Microscope, MessageCircle } from 'lucide-react';
 
 export const MessageItem = ({ message }) => {
@@ -46,7 +48,13 @@ export const MessageItem = ({ message }) => {
 
       <div className="message-content-wrapper">
         <div className="message-content">
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          )}
         </div>
         {!isUser && renderRouteBadge(message.route_taken)}
       </div>
