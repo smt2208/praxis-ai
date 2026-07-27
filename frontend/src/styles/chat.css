@@ -77,7 +77,7 @@
 .conv-title {
   white-space: nowrap;
   overflow: hidden;
-  text-text-overflow: ellipsis;
+  text-overflow: ellipsis;
   flex: 1;
 }
 
