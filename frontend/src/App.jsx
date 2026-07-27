@@ -45,14 +45,11 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // On initial login / workspace launch: select most recent conversation or create one if empty
+      // On login / refresh: start with a fresh empty chat screen (ChatGPT/Claude flow)
+      // Past conversations are listed in the sidebar for easy access
       if (!initialChatCreatedRef.current) {
         initialChatCreatedRef.current = true;
-        if (list.length > 0) {
-          setActiveConvId(list[0].conversation_id);
-        } else {
-          await handleCreateNewConversation();
-        }
+        setActiveConvId(null);
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
@@ -64,25 +61,9 @@ const MainLayout = () => {
     setAuthModalOpen(true);
   };
 
-  const handleCreateNewConversation = async () => {
-    try {
-      const newConv = await api.createConversation('New Conversation');
-      const convId = newConv.conversation_id;
-
-      // Update state directly — no recursive loadConversations() call
-      setActiveConvId(convId);
-      setConversations((prev) => [
-        {
-          conversation_id: convId,
-          title: 'New Conversation',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
-    } catch (err) {
-      console.error('Failed to create new conversation:', err);
-    }
+  const handleCreateNewConversation = () => {
+    // Simply reset to fresh chat screen without pre-creating an empty DB row
+    setActiveConvId(null);
   };
 
   const handleDeleteConversation = async (convId) => {
@@ -122,6 +103,7 @@ const MainLayout = () => {
           conversationId={activeConvId}
           activeTitle={conversations.find(c => c.conversation_id === activeConvId)?.title}
           onRefreshConversations={loadConversations}
+          onSelectActiveConv={(convId) => setActiveConvId(convId)}
         />
         <DocumentIngestModal
           isOpen={ingestModalOpen}

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Cpu, Sparkles, MessageSquare, Plus, CheckCircle2, Loader2, FileText, X } from 'lucide-react';
+import { Send, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
 
-export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations }) => {
+export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations, onSelectActiveConv }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -17,9 +17,15 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   // Fetch messages history and ingested documents whenever active conversationId changes
   useEffect(() => {
-    if (!conversationId) return;
     setUploadingFileName(null);
     setError(null);
+
+    if (!conversationId) {
+      setMessages([]);
+      setActiveFiles([]);
+      setLoadingHistory(false);
+      return;
+    }
 
     const fetchData = async () => {
       setLoadingHistory(true);
@@ -46,9 +52,21 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Ensure an active conversation ID exists in DB before performing actions
+  const ensureActiveConversation = async () => {
+    if (conversationId) return conversationId;
+
+    const newConv = await api.createConversation('New Conversation');
+    const newId = newConv.conversation_id;
+    if (onSelectActiveConv) {
+      onSelectActiveConv(newId);
+    }
+    return newId;
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || sending || !conversationId) return;
+    if (!inputMessage.trim() || sending) return;
 
     const text = inputMessage.trim();
     setInputMessage('');
@@ -59,7 +77,8 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     setSending(true);
 
     try {
-      const res = await api.sendMessage(conversationId, text);
+      const activeId = await ensureActiveConversation();
+      const res = await api.sendMessage(activeId, text);
       const assistantMsg = {
         role: 'assistant',
         content: res.answer,
@@ -67,8 +86,8 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      if (messages.length <= 1 && onRefreshConversations) {
-        setTimeout(() => onRefreshConversations(), 1500);
+      if (onRefreshConversations) {
+        setTimeout(() => onRefreshConversations(), 1000);
       }
     } catch (err) {
       setError(err.message || 'Error processing response');
@@ -79,16 +98,19 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   const handleQuickFileSelect = async (e) => {
     const file = e.target.files[0];
-    if (!file || !conversationId) return;
+    if (!file) return;
 
     setIngesting(true);
     setUploadingFileName(file.name);
     setError(null);
 
     try {
-      const res = await api.ingestFile(file, conversationId);
-      // Add to persistent context list
-      setActiveFiles((prev) => [...prev, { name: file.name, chunks: res.documents_stored }]);
+      const activeId = await ensureActiveConversation();
+      const res = await api.ingestFile(file, activeId);
+      setActiveFiles((prev) => [...prev, { name: file.name }]);
+      if (onRefreshConversations) {
+        onRefreshConversations();
+      }
     } catch (err) {
       const msg = err.message || '';
       if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
@@ -105,26 +127,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     }
   };
 
-  if (!conversationId) {
-    return (
-      <div className="chat-main" style={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
-        <div style={{ color: 'var(--text-dim)', maxWidth: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <div className="brand-icon" style={{ width: '56px', height: '56px' }}>
-            <Cpu size={32} />
-          </div>
-          <h3 style={{ color: 'var(--text-main)' }}>No Conversation Selected</h3>
-          <p style={{ fontSize: '0.9rem' }}>Select a conversation from the sidebar or start a new chat.</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <main className="chat-main">
       {/* Chat header */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <MessageSquare size={18} style={{ color: '#38bdf8' }} />
+          <MessageSquare size={18} style={{ color: '#818cf8' }} />
           <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{activeTitle || 'New Conversation'}</span>
         </div>
       </div>
