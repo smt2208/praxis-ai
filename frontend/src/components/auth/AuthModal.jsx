@@ -19,7 +19,7 @@ export const AuthModal = ({ isOpen, onClose, initialTab = 'login' }) => {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#38bdf8', marginBottom: '8px' }}>
             <Cpu size={28} />
           </div>
-          <h2>Welcome to Praxis AI</h2>
+          <h2>Welcome to Praxis</h2>
           <p>Access your autonomous multi-agent workspace</p>
         </div>
 

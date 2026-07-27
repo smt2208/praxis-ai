@@ -13,7 +13,7 @@ export const HeroSection = ({ onOpenAuth, onGoToChat }) => {
       </div>
 
       <h1 className="hero-title">
-        Supercharge Your Thinking with <span className="gradient-text">Praxis AI</span>
+        Supercharge Your Thinking with <span className="gradient-text">Praxis</span>
       </h1>
 
       <p className="hero-description">
@@ -34,7 +34,7 @@ export const HeroSection = ({ onOpenAuth, onGoToChat }) => {
               style={{ padding: '14px 28px', fontSize: '1.05rem' }}
               onClick={() => onOpenAuth('register')}
             >
-              <span>Try Praxis AI Free</span>
+              <span>Try Praxis Free</span>
               <ArrowRight size={20} />
             </button>
             <button

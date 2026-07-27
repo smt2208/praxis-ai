@@ -137,7 +137,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         ) : messages.length === 0 ? (
           <div style={{ textAlign: 'center', margin: 'auto', color: 'var(--text-dim)', maxWidth: '440px' }}>
             <Sparkles size={36} style={{ color: 'var(--primary)', marginBottom: '12px' }} />
-            <h4 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Praxis AI Ready</h4>
+            <h4 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Praxis Ready</h4>
             <p style={{ fontSize: '0.9rem' }}>
               Ask a question, request deep research, or upload a document via the <strong>+</strong> button.
             </p>

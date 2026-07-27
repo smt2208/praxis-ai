@@ -7,7 +7,7 @@ export const ArchitectureShowcase = () => {
       <div className="section-header">
         <span className="badge badge-primary" style={{ marginBottom: '12px' }}>Smart Intelligence</span>
         <h2>Tailored AI Experts for Every Task</h2>
-        <p>Praxis AI routes your questions to specialized engines designed for maximum accuracy</p>
+        <p>Praxis routes your questions to specialized engines designed for maximum accuracy</p>
       </div>
 
       <div className="swarm-grid">

@@ -21,7 +21,7 @@ export const Sidebar = ({
       <div className="sidebar-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, fontSize: '1.1rem' }}>
           <Cpu size={22} style={{ color: '#38bdf8' }} />
-          <span>Praxis AI</span>
+          <span>Praxis</span>
         </div>
       </div>
 

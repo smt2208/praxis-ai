@@ -11,7 +11,7 @@ export const Navbar = ({ onOpenAuth, onGoToChat }) => {
         <div className="brand-icon">
           <Cpu size={22} />
         </div>
-        <span>Praxis AI</span>
+        <span>Praxis</span>
       </a>
 
       <div className="nav-actions">

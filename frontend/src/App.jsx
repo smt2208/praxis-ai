@@ -102,7 +102,7 @@ const MainLayout = () => {
   if (loading) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#090d16', color: '#38bdf8' }}>
-        <div>Loading Praxis AI...</div>
+        <div>Loading Praxis...</div>
       </div>
     );
   }

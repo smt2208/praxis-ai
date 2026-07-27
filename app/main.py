@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 # --- App ---------------------------------------------------------------
 
 app = FastAPI(
-    title="Praxis AI",
+    title="Praxis",
     description="Stateless Hierarchical Multi-Agent API",
     version="1.0.0",
     lifespan=lifespan,
