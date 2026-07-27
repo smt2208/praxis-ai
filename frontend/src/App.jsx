@@ -137,13 +137,13 @@ const MainLayout = () => {
     <div className="landing-page">
       <Navbar
         onOpenAuth={handleOpenAuth}
-        onGoToChat={() => handleOpenAuth('login')}
+        onGoToChat={() => handleOpenAuth('register')}
       />
 
       <main>
         <HeroSection
           onOpenAuth={handleOpenAuth}
-          onGoToChat={() => handleOpenAuth('login')}
+          onGoToChat={() => handleOpenAuth('register')}
         />
         <ArchitectureShowcase />
         <FeatureGrid />

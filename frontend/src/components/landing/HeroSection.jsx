@@ -18,7 +18,7 @@ export const HeroSection = ({ onOpenAuth, onGoToChat }) => {
 
       <p className="hero-description">
         An intelligent AI workspace built to help you write, research, analyze complex 
-        documents, and get accurate answers — powered by a swarm of specialized AI experts.
+        documents, and get accurate answers, powered by a team of specialized AI experts.
       </p>
 
       <div className="hero-ctas">
