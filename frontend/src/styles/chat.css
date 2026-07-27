@@ -1,3 +1,9 @@
+/* Spin animation for loader */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 /* Chat Workspace Container */
 .chat-workspace {
   display: flex;

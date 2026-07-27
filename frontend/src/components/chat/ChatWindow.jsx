@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Cpu, Sparkles, MessageSquare, Plus, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { Send, Cpu, Sparkles, MessageSquare, Plus, CheckCircle2, Loader2, FileText, X } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
 
@@ -9,29 +9,33 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [sending, setSending] = useState(false);
   const [ingesting, setIngesting] = useState(false);
-  const [ingestNotice, setIngestNotice] = useState(null);
+  const [uploadingFileName, setUploadingFileName] = useState(null);  // shows during upload
+  const [activeFiles, setActiveFiles] = useState([]);               // persists after upload
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
+  // Reset files when conversation changes
+  useEffect(() => {
+    setActiveFiles([]);
+    setUploadingFileName(null);
+    setError(null);
+  }, [conversationId]);
+
   // Fetch messages history whenever active conversationId changes
   useEffect(() => {
     if (!conversationId) return;
-
     const fetchHistory = async () => {
       setLoadingHistory(true);
-      setError(null);
       try {
         const history = await api.getMessages(conversationId);
         setMessages(history);
       } catch (err) {
-        console.error('Failed to load messages:', err);
         setError('Failed to load message history.');
       } finally {
         setLoadingHistory(false);
       }
     };
-
     fetchHistory();
   }, [conversationId]);
 
@@ -48,7 +52,6 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     setInputMessage('');
     setError(null);
 
-    // Optimistically add user message to thread
     const userMsg = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
@@ -62,12 +65,10 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // If this was the first turn in a 'New Conversation', refresh sidebar titles after short delay
       if (messages.length <= 1 && onRefreshConversations) {
         setTimeout(() => onRefreshConversations(), 1500);
       }
     } catch (err) {
-      console.error('Failed to send message:', err);
       setError(err.message || 'Error processing response');
     } finally {
       setSending(false);
@@ -79,16 +80,14 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     if (!file || !conversationId) return;
 
     setIngesting(true);
-    setIngestNotice(null);
+    setUploadingFileName(file.name);
     setError(null);
 
     try {
       const res = await api.ingestFile(file, conversationId);
-      setIngestNotice(`✓ "${file.name}" ingested (${res.documents_stored} chunks stored)`);
-      setTimeout(() => setIngestNotice(null), 5000);
+      // Add to persistent context list
+      setActiveFiles((prev) => [...prev, { name: file.name, chunks: res.documents_stored }]);
     } catch (err) {
-      console.error('Quick ingestion error:', err);
-      // Show a clean, human-readable error — not a raw error code
       const msg = err.message || '';
       if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
         setError('File is too large. Please upload a smaller document (max ~10 MB).');
@@ -99,6 +98,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       }
     } finally {
       setIngesting(false);
+      setUploadingFileName(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -111,7 +111,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             <Cpu size={32} />
           </div>
           <h3 style={{ color: 'var(--text-main)' }}>No Conversation Selected</h3>
-          <p style={{ fontSize: '0.9rem' }}>Select a conversation from the sidebar or start a new chat to begin prompting the multi-agent AI engine.</p>
+          <p style={{ fontSize: '0.9rem' }}>Select a conversation from the sidebar or start a new chat.</p>
         </div>
       </div>
     );
@@ -119,7 +119,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   return (
     <main className="chat-main">
-      {/* Chat header — only conversation title */}
+      {/* Chat header */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <MessageSquare size={18} style={{ color: '#38bdf8' }} />
@@ -137,7 +137,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             <Sparkles size={36} style={{ color: 'var(--primary)', marginBottom: '12px' }} />
             <h4 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Praxis AI Ready</h4>
             <p style={{ fontSize: '0.9rem' }}>
-              Ask a question, request deep research, or upload a document to trigger the Knowledge Team.
+              Ask a question, request deep research, or upload a document via the <strong>+</strong> button.
             </p>
           </div>
         ) : (
@@ -165,10 +165,43 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       </div>
 
       <div className="chat-input-area">
-        {ingestNotice && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: '#6ee7b7', background: 'rgba(52, 211, 153, 0.15)', padding: '6px 12px', borderRadius: '8px', marginBottom: '8px' }}>
-            <CheckCircle2 size={16} />
-            <span>{ingestNotice}</span>
+
+        {/* ── Uploading indicator ── */}
+        {ingesting && uploadingFileName && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            fontSize: '0.82rem', color: '#93c5fd',
+            background: 'rgba(56, 189, 248, 0.1)',
+            border: '1px solid rgba(56, 189, 248, 0.2)',
+            padding: '6px 12px', borderRadius: '8px', marginBottom: '8px',
+          }}>
+            <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+            <span>Uploading <strong>{uploadingFileName}</strong>...</span>
+          </div>
+        )}
+
+        {/* ── Active files context pills ── */}
+        {activeFiles.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+            {activeFiles.map((f, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                fontSize: '0.78rem', color: '#6ee7b7',
+                background: 'rgba(52, 211, 153, 0.1)',
+                border: '1px solid rgba(52, 211, 153, 0.25)',
+                padding: '4px 10px', borderRadius: '20px',
+              }}>
+                <FileText size={12} />
+                <span>{f.name}</span>
+                <button
+                  onClick={() => setActiveFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                  title="Remove from view"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0 2px', lineHeight: 1 }}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -202,12 +235,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
               flexShrink: 0,
             }}
           >
-            {ingesting ? <Loader2 size={18} className="animate-pulse" /> : <Plus size={20} />}
+            {ingesting ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={20} />}
           </button>
 
           <textarea
             className="chat-textarea"
-            placeholder="Ask anything, attach a document (+), or request deep research..."
+            placeholder={ingesting ? 'Waiting for document to finish uploading...' : 'Ask anything, attach a document (+), or request deep research...'}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -217,12 +250,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
               }
             }}
             rows={1}
-            disabled={sending}
+            disabled={sending || ingesting}
           />
           <button
             type="submit"
             className="send-btn"
-            disabled={!inputMessage.trim() || sending}
+            disabled={!inputMessage.trim() || sending || ingesting}
             title="Send Message"
           >
             <Send size={18} />

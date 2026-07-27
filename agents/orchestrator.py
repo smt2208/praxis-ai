@@ -54,16 +54,25 @@ def ceo_node(state: OrchestratorState) -> dict:
     history_text = "\n".join(
         f"{m.type.upper()}: {m.content}" for m in state["messages"][:-1]
     )
+
+    # Tell the router explicitly whether documents are present — critical for correct routing
+    doc_context = (
+        "IMPORTANT: The user HAS uploaded documents to this conversation. "
+        "If their question could relate to the uploaded documents, route to knowledge_team."
+        if state["has_documents"]
+        else "The user has NOT uploaded any documents to this conversation. Do NOT route to knowledge_team."
+    )
+
     routing_messages = [
         SystemMessage(content=ROUTER_SYSTEM),
         HumanMessage(content=(
+            f"{doc_context}\n\n"
             f"Conversation so far:\n{history_text}\n\n"
             f"Latest user message: {state['query']}"
             if history_text else
-            f"User message: {state['query']}"
+            f"{doc_context}\n\nUser message: {state['query']}"
         )),
     ]
-    # with_structured_output guarantees a valid RouteDecision — no text parsing
     decision: RouteDecision = _router_llm.invoke(routing_messages)
     route = decision.route
 
