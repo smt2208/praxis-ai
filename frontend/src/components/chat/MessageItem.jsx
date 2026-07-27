@@ -1,33 +1,43 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Cpu, BookOpen, Microscope, MessageCircle } from 'lucide-react';
+import { User, Cpu, BookOpen, Microscope, MessageCircle, Sparkles, Loader2 } from 'lucide-react';
 
 export const MessageItem = ({ message }) => {
   const isUser = message.role === 'user';
 
   const renderRouteBadge = (route) => {
-    if (!route) return null;
+    if (!route || route === 'ceo') return null;
     switch (route) {
       case 'knowledge_team':
+      case 'knowledge':
         return (
           <span className="badge badge-emerald route-badge">
             <BookOpen size={12} />
-            <span>Knowledge Team (RAG)</span>
+            <span>Knowledge Base</span>
           </span>
         );
       case 'research_team':
+      case 'research':
         return (
           <span className="badge badge-purple route-badge">
             <Microscope size={12} />
-            <span>Deep Research Agent</span>
+            <span>Deep Research</span>
           </span>
         );
       case 'follow_up':
+      case 'chat':
         return (
           <span className="badge badge-primary route-badge">
             <MessageCircle size={12} />
-            <span>Follow-Up Agent</span>
+            <span>Conversational</span>
+          </span>
+        );
+      case 'general':
+        return (
+          <span className="badge badge-primary route-badge">
+            <Sparkles size={12} />
+            <span>Web Search & Synthesis</span>
           </span>
         );
       default:
@@ -55,13 +65,17 @@ export const MessageItem = ({ message }) => {
               {message.content}
             </ReactMarkdown>
           ) : (
-            <span className="animate-pulse" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              Thinking...
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0', color: 'var(--text-muted)' }}>
+              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', color: '#818cf8' }} />
+              <span style={{ fontSize: '0.88rem', fontWeight: 500 }}>
+                {message.status_message || 'Processing request...'}
+              </span>
+            </div>
           )}
         </div>
-        {!isUser && renderRouteBadge(message.route_taken)}
+        {!isUser && message.content && renderRouteBadge(message.route_taken)}
       </div>
     </div>
   );
 };
+

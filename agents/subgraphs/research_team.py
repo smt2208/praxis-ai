@@ -160,3 +160,63 @@ def run_research_team(query: str, history: list = None) -> str:
         "final_report": "",
     })
     return result["final_report"]
+
+
+async def astream_research_team(query: str, history: list = None):
+    """
+    Async generator yielding step-by-step progress events and streaming report tokens.
+    Yields dicts with:
+      {"type": "status", "message": "..."} OR {"type": "token", "content": "..."}
+    """
+    import asyncio
+
+    history_summary = ""
+    if history:
+        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+
+    state: ResearchState = {
+        "query": query,
+        "history_summary": history_summary,
+        "research_plan": [],
+        "findings": [],
+        "iteration": 0,
+        "final_report": "",
+    }
+
+    # Step 1: Planning
+    yield {"type": "status", "message": "Formulating research plan..."}
+    plan_delta = await asyncio.to_thread(planner_node, state)
+    state.update(plan_delta)
+
+    plan = state["research_plan"]
+    total_steps = min(len(plan), MAX_RESEARCH_ITERATIONS)
+
+    # Step 2: Multi-step Research Execution
+    for i in range(total_steps):
+        step_title = plan[i] if i < len(plan) else query
+        yield {"type": "status", "message": f"Researching step {i + 1}/{total_steps}: {step_title[:50]}..."}
+        research_delta = await asyncio.to_thread(researcher_node, state)
+        state["findings"].extend(research_delta.get("findings", []))
+        state["iteration"] = research_delta.get("iteration", i + 1)
+
+    # Step 3: Synthesis & Live Token Streaming
+    yield {"type": "status", "message": "Synthesizing deep research report..."}
+
+    findings_text = "\n\n".join(state["findings"])
+    messages = [
+        SystemMessage(content=REPORTER_SYSTEM),
+        HumanMessage(content=REPORTER_HUMAN.format(
+            query=state['query'],
+            findings_text=findings_text
+        )),
+    ]
+
+    async for chunk in _llm.astream(messages):
+        content = chunk.content
+        if isinstance(content, str) and content:
+            yield {"type": "token", "content": content}
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                    yield {"type": "token", "content": block["text"]}
+

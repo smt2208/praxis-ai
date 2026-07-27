@@ -92,12 +92,16 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       try {
         await api.sendMessageStream(activeId, text, {
           onAgentStart: (data) => {
-            if (data.agent) {
+            if (data.agent || data.message) {
               setMessages((prev) => {
                 const updated = [...prev];
                 const last = updated[updated.length - 1];
                 if (last && last.role === 'assistant') {
-                  updated[updated.length - 1] = { ...last, route_taken: data.agent };
+                  updated[updated.length - 1] = {
+                    ...last,
+                    route_taken: data.agent || last.route_taken,
+                    status_message: data.message || last.status_message,
+                  };
                 }
                 return updated;
               });

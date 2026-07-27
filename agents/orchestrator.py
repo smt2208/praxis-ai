@@ -255,23 +255,21 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
                     if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
                         yield {"event": "token", "data": {"agent": "follow_up", "content": block["text"]}}
     elif route == "knowledge_team":
-        yield {"event": "agent_start", "data": {"agent": "knowledge_team", "message": "Searching document knowledge base..."}}
-        answer = await asyncio.to_thread(
-            run_knowledge_team,
-            query,
-            history=messages,
-            user_id=user_id,
-            conversation_id=conversation_id,
-        )
-        yield {"event": "token", "data": {"agent": "knowledge_team", "content": answer}}
+        from agents.subgraphs.knowledge_team import astream_knowledge_team
+        async for evt in astream_knowledge_team(query, user_id=user_id, conversation_id=conversation_id, history=messages):
+            if evt["type"] == "status":
+                yield {"event": "agent_start", "data": {"agent": "knowledge_team", "message": evt["message"]}}
+            elif evt["type"] == "token":
+                yield {"event": "token", "data": {"agent": "knowledge_team", "content": evt["content"]}}
+
     elif route == "research_team":
-        yield {"event": "agent_start", "data": {"agent": "research_team", "message": "Executing multi-step deep research..."}}
-        answer = await asyncio.to_thread(
-            run_research_team,
-            query,
-            history=messages,
-        )
-        yield {"event": "token", "data": {"agent": "research_team", "content": answer}}
+        from agents.subgraphs.research_team import astream_research_team
+        async for evt in astream_research_team(query, history=messages):
+            if evt["type"] == "status":
+                yield {"event": "agent_start", "data": {"agent": "research_team", "message": evt["message"]}}
+            elif evt["type"] == "token":
+                yield {"event": "token", "data": {"agent": "research_team", "content": evt["content"]}}
 
     yield {"event": "done", "data": {"route": route}}
+
 

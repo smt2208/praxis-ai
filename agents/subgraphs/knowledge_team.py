@@ -175,16 +175,77 @@ def _build_knowledge_graph():
 knowledge_graph = _build_knowledge_graph()
 
 
+# --- Enterprise RAG Helpers ----------------------------------------------
+
+def rewrite_query(query: str, history_summary: str = "") -> str:
+    """Rewrite raw user query into an explicit, standalone vector search query."""
+    if not history_summary:
+        return query
+
+    from prompts.knowledge_prompts import QUERY_REWRITER_SYSTEM
+    prompt = f"Chat History:\n{history_summary}\n\nLatest User Query: {query}"
+    try:
+        response = _llm.invoke([
+            SystemMessage(content=QUERY_REWRITER_SYSTEM),
+            HumanMessage(content=prompt)
+        ])
+        rewritten = response.content.strip()
+        return rewritten if rewritten else query
+    except Exception:
+        return query
+
+
+class EvaluationResult(BaseModel):
+    sufficient: bool
+    reason: str
+
+
+_evaluator_llm = _llm.with_structured_output(EvaluationResult)
+
+
+def evaluate_doc_context(query: str, rag_results: str) -> bool:
+    """Determine if retrieved document context is sufficient to answer the query."""
+    if not rag_results or len(rag_results.strip()) < 20:
+        return False
+
+    from prompts.knowledge_prompts import EVALUATOR_SYSTEM
+    try:
+        res = _evaluator_llm.invoke([
+            SystemMessage(content=EVALUATOR_SYSTEM),
+            HumanMessage(content=f"Query: {query}\n\nRetrieved Document Context:\n{rag_results}")
+        ])
+        return res.sufficient
+    except Exception:
+        return True
+
+
+def _format_history(history: list) -> str:
+    """Format history list safely whether elements are dicts or BaseMessage objects."""
+    if not history:
+        return ""
+    formatted = []
+    for m in history[-4:]:
+        if isinstance(m, dict):
+            role = m.get("role", "user").upper()
+            content = m.get("content", "")
+        else:
+            role = getattr(m, "type", "human").upper()
+            content = getattr(m, "content", "")
+        if content:
+            formatted.append(f"{role}: {content}")
+    return "\n".join(formatted)
+
+
 # --- Wrapper (called by parent graph) ----------------------------------
 
 def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None) -> str:
-    """Entry point for the parent CEO graph. Returns only the final answer string."""
-    history_summary = ""
-    if history:
-        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+    """Entry point for synchronous graph invocation."""
+    history_summary = _format_history(history)
+
+    standalone_query = rewrite_query(query, history_summary)
 
     result = knowledge_graph.invoke({
-        "query": query,
+        "query": standalone_query,
         "history_summary": history_summary,
         "user_id": user_id,
         "conversation_id": conversation_id,
@@ -195,4 +256,83 @@ def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: 
         "retry_count": 0,
     })
     return result["final_answer"]
+
+
+async def astream_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None):
+    """
+    Enterprise RAG Async generator yielding progress events and streaming synthesizer tokens in real-time.
+    Yields dicts with:
+      {"type": "status", "message": "..."} OR {"type": "token", "content": "..."}
+    """
+    history_summary = _format_history(history)
+
+    # Step 1: Conversational Query Rewriting
+    yield {"type": "status", "message": "Refining search query context..."}
+    standalone_query = await asyncio.to_thread(rewrite_query, query, history_summary)
+
+    # Initialize KnowledgeState object
+    state: KnowledgeState = {
+        "query": standalone_query,
+        "history_summary": history_summary,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "rag_results": "",
+        "web_results": "",
+        "final_answer": "",
+        "critic_feedback": "",
+        "retry_count": 0,
+    }
+
+    # Step 2: Document Vector Retrieval (Qdrant)
+    yield {"type": "status", "message": f"Searching documents for '{standalone_query[:40]}'..."}
+    from agents.tools import build_hybrid_retriever
+    rag_tool = build_hybrid_retriever(user_id=user_id, conversation_id=conversation_id)
+
+    async def _fetch_rag() -> str:
+        agent = create_react_agent(_llm, [rag_tool])
+        result = await agent.ainvoke({"messages": [HumanMessage(content=standalone_query)]}, config={"recursion_limit": 4})
+        return result["messages"][-1].content
+
+    try:
+        state["rag_results"] = await _fetch_rag()
+    except Exception as e:
+        state["rag_results"] = f"Document retrieval error: {str(e)}"
+
+    # Step 3: Adaptive Web Search Gating
+    yield {"type": "status", "message": "Evaluating document context completeness..."}
+    is_sufficient = await asyncio.to_thread(evaluate_doc_context, standalone_query, state["rag_results"])
+
+    if not is_sufficient:
+        yield {"type": "status", "message": "Supplementing with external web facts..."}
+        async def _fetch_web() -> str:
+            agent = create_react_agent(_llm, [tavily_tool])
+            prompt = f"Search for: {standalone_query}"
+            res = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
+            return res["messages"][-1].content
+        try:
+            state["web_results"] = await _fetch_web()
+        except Exception:
+            state["web_results"] = ""
+
+    # Step 4: Grounded Synthesis & Live Token Streaming
+    yield {"type": "status", "message": "Synthesizing answer with document citations..."}
+
+    system = SYNTHESIZER_SYSTEM
+    human_content = SYNTHESIZER_HUMAN.format(
+        query=query,
+        rag_results=state["rag_results"],
+        web_results=state["web_results"] if state["web_results"] else "None required (Internal document context was complete).",
+    )
+    messages = [SystemMessage(content=system), HumanMessage(content=human_content)]
+
+    async for chunk in _llm.astream(messages):
+        content = chunk.content
+        if isinstance(content, str) and content:
+            yield {"type": "token", "content": content}
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                    yield {"type": "token", "content": block["text"]}
+
+
 
