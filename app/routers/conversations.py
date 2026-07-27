@@ -5,6 +5,7 @@ from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
 from app.database import (
     get_history, create_conversation, get_conversations_by_user, delete_conversation,
+    get_conversation_documents,
 )
 from app.schemas import (
     ConversationCreateRequest, ConversationResponse,
@@ -54,6 +55,16 @@ async def get_messages(
     """Fetch the message history for a conversation (must belong to the user)."""
     rows = await get_history(pool, conversation_id, limit=50)
     return [MessageResponse(role=r["role"], content=r["content"]) for r in rows]
+
+
+@router.get("/{conversation_id}/documents", response_model=list[str])
+async def get_documents(
+    conversation_id: str,
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """Fetch filenames of ingested documents for a conversation."""
+    return await get_conversation_documents(pool, conversation_id)
 
 
 @router.delete("/{conversation_id}", status_code=204)

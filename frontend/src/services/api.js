@@ -126,6 +126,10 @@ export const api = {
     method: 'GET',
   }),
 
+  getDocuments: (conversationId) => request(`/api/v1/conversations/${conversationId}/documents`, {
+    method: 'GET',
+  }),
+
   // Chat
   sendMessage: (conversationId, message) => request('/api/v1/chat', {
     method: 'POST',

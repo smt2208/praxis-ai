@@ -37,6 +37,13 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS conversation_documents (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE NOT NULL,
+    filename        VARCHAR(255) NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 _ADD_HASHED_PASSWORD_COL = """
@@ -263,4 +270,22 @@ async def update_conversation_title(pool: asyncpg.Pool, conversation_id: str, ti
         "UPDATE conversations SET title = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
         title, conversation_id,
     )
+
+
+async def add_conversation_document(pool: asyncpg.Pool, conversation_id: str, filename: str) -> None:
+    """Record an ingested document for a conversation."""
+    await pool.execute(
+        "INSERT INTO conversation_documents (conversation_id, filename) VALUES ($1, $2)",
+        conversation_id, filename,
+    )
+
+
+async def get_conversation_documents(pool: asyncpg.Pool, conversation_id: str) -> list[str]:
+    """Fetch distinct filenames of ingested documents for a conversation."""
+    rows = await pool.fetch(
+        "SELECT DISTINCT filename FROM conversation_documents WHERE conversation_id = $1 ORDER BY filename ASC",
+        conversation_id,
+    )
+    return [r["filename"] for r in rows]
+
 

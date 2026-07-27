@@ -15,28 +15,30 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  // Reset files when conversation changes
-  useEffect(() => {
-    setActiveFiles([]);
-    setUploadingFileName(null);
-    setError(null);
-  }, [conversationId]);
-
-  // Fetch messages history whenever active conversationId changes
+  // Fetch messages history and ingested documents whenever active conversationId changes
   useEffect(() => {
     if (!conversationId) return;
-    const fetchHistory = async () => {
+    setUploadingFileName(null);
+    setError(null);
+
+    const fetchData = async () => {
       setLoadingHistory(true);
       try {
-        const history = await api.getMessages(conversationId);
+        const [history, docs] = await Promise.all([
+          api.getMessages(conversationId),
+          api.getDocuments(conversationId).catch(() => []),
+        ]);
         setMessages(history);
+        if (Array.isArray(docs)) {
+          setActiveFiles(docs.map((filename) => ({ name: filename })));
+        }
       } catch (err) {
         setError('Failed to load message history.');
       } finally {
         setLoadingHistory(false);
       }
     };
-    fetchHistory();
+    fetchData();
   }, [conversationId]);
 
   // Auto-scroll to bottom on new message

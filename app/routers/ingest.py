@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import mark_conversation_has_documents
+from app.database import mark_conversation_has_documents, add_conversation_document
 from app.schemas import IngestRequest, IngestResponse
 from scripts.ingestion import ingest_document
 
@@ -28,7 +28,9 @@ async def ingest(
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
         )
+        filename = body.source_url.split("/")[-1].split("?")[0] or "document"
         await mark_conversation_has_documents(pool, body.conversation_id)
+        await add_conversation_document(pool, body.conversation_id, filename)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion error: {str(e)}")
 
@@ -59,7 +61,9 @@ async def ingest_file(
             user_id=current_user["id"],
             conversation_id=conversation_id,
         )
+        filename = file.filename or "uploaded_file"
         await mark_conversation_has_documents(pool, conversation_id)
+        await add_conversation_document(pool, conversation_id, filename)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion error: {str(e)}")
     finally:
