@@ -18,29 +18,26 @@ import './styles/chat.css';
 
 const MainLayout = () => {
   const { isAuthenticated, loading } = useAuth();
-  const [currentView, setCurrentView] = useState(
-    () => localStorage.getItem('praxis_view') || 'landing'
-  ); // persist across refreshes
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState('login');
-  
+
   // Chat state
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
   const initialChatCreatedRef = useRef(false);
 
-  // When authenticated & in chat view: load conversations (also fires on page refresh)
+  // When user becomes authenticated, load their conversations
   useEffect(() => {
-    if (isAuthenticated && currentView === 'chat') {
+    if (isAuthenticated) {
       loadConversations();
+    } else {
+      // Session expired or logged out: reset chat state
+      setConversations([]);
+      setActiveConvId(null);
+      initialChatCreatedRef.current = false;
     }
-    // If session expired / logged out while on chat, bounce back to landing
-    if (!isAuthenticated && !loading && currentView === 'chat') {
-      setCurrentView('landing');
-      localStorage.setItem('praxis_view', 'landing');
-    }
-  }, [isAuthenticated, currentView, loading]);
+  }, [isAuthenticated]);
 
   const loadConversations = async () => {
     try {
@@ -48,7 +45,7 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // On initial login / workspace launch: always start with a fresh new chat thread ONCE
+      // Start with a fresh new chat thread once per session
       if (!initialChatCreatedRef.current) {
         initialChatCreatedRef.current = true;
         await handleCreateNewConversation();
@@ -63,26 +60,12 @@ const MainLayout = () => {
     setAuthModalOpen(true);
   };
 
-  const handleGoToChat = () => {
-    if (!isAuthenticated) {
-      handleOpenAuth('login');
-      return;
-    }
-    setCurrentView('chat');
-    localStorage.setItem('praxis_view', 'chat');
-  };
-
-  const handleGoHome = () => {
-    setCurrentView('landing');
-    localStorage.setItem('praxis_view', 'landing');
-  };
-
   const handleCreateNewConversation = async () => {
     try {
       const newConv = await api.createConversation('New Conversation');
       const convId = newConv.conversation_id;
-      
-      // Update state directly — NO recursive loadConversations() call!
+
+      // Update state directly — no recursive loadConversations() call
       setActiveConvId(convId);
       setConversations((prev) => [
         {
@@ -106,8 +89,8 @@ const MainLayout = () => {
     );
   }
 
-  // Render Chat Workspace
-  if (currentView === 'chat' && isAuthenticated) {
+  // ─── If authenticated → always go straight to the chat workspace ───
+  if (isAuthenticated) {
     return (
       <div className="chat-workspace">
         <Sidebar
@@ -115,7 +98,6 @@ const MainLayout = () => {
           activeConvId={activeConvId}
           onSelectConv={(id) => setActiveConvId(id)}
           onNewConv={handleCreateNewConversation}
-          onGoHome={handleGoHome}
         />
         <ChatWindow
           conversationId={activeConvId}
@@ -131,18 +113,18 @@ const MainLayout = () => {
     );
   }
 
-  // Render Landing Page View
+  // ─── Not authenticated → show the landing page ───
   return (
     <div className="landing-page">
       <Navbar
         onOpenAuth={handleOpenAuth}
-        onGoToChat={handleGoToChat}
+        onGoToChat={() => handleOpenAuth('login')}
       />
-      
+
       <main>
         <HeroSection
           onOpenAuth={handleOpenAuth}
-          onGoToChat={handleGoToChat}
+          onGoToChat={() => handleOpenAuth('login')}
         />
         <ArchitectureShowcase />
         <FeatureGrid />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Cpu, Home, ShieldAlert } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Sidebar = ({
@@ -7,7 +7,6 @@ export const Sidebar = ({
   activeConvId,
   onSelectConv,
   onNewConv,
-  onGoHome,
 }) => {
   const { user, logout } = useAuth();
 
@@ -23,14 +22,6 @@ export const Sidebar = ({
           <Cpu size={22} style={{ color: '#38bdf8' }} />
           <span>Praxis AI</span>
         </div>
-        <button
-          className="btn btn-secondary"
-          style={{ padding: '6px 10px', fontSize: '0.8rem' }}
-          onClick={onGoHome}
-          title="Return to Landing Page"
-        >
-          <Home size={16} />
-        </button>
       </div>
 
       <button className="btn btn-primary new-chat-btn" onClick={onNewConv}>
