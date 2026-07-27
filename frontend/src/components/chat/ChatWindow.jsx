@@ -14,11 +14,15 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const isSendingRef = useRef(false);
 
   // Fetch messages history and ingested documents whenever active conversationId changes
   useEffect(() => {
     setUploadingFileName(null);
     setError(null);
+
+    // If currently sending a message (e.g. creating a new conversation on the fly), preserve optimistic messages
+    if (isSendingRef.current) return;
 
     if (!conversationId) {
       setMessages([]);
@@ -75,6 +79,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     const userMsg = { role: 'user', content: text };
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
+    isSendingRef.current = true;
 
     try {
       const activeId = await ensureActiveConversation();
@@ -93,6 +98,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       setError(err.message || 'Error processing response');
     } finally {
       setSending(false);
+      isSendingRef.current = false;
     }
   };
 
