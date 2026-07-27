@@ -23,6 +23,7 @@ const MainLayout = () => {
   // Chat state
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const initialChatCreatedRef = useRef(false);
 
   // When user becomes authenticated, load their conversations
@@ -33,6 +34,7 @@ const MainLayout = () => {
       // Session expired or logged out: reset chat state
       setConversations([]);
       setActiveConvId(null);
+      setSidebarOpen(false);
       initialChatCreatedRef.current = false;
     }
   }, [isAuthenticated]);
@@ -62,6 +64,7 @@ const MainLayout = () => {
   const handleCreateNewConversation = () => {
     // Simply reset to fresh chat screen without pre-creating an empty DB row
     setActiveConvId(null);
+    setSidebarOpen(false);
   };
 
   const handleDeleteConversation = async (convId) => {
@@ -93,15 +96,18 @@ const MainLayout = () => {
         <Sidebar
           conversations={conversations}
           activeConvId={activeConvId}
-          onSelectConv={(id) => setActiveConvId(id)}
+          onSelectConv={(id) => { setActiveConvId(id); setSidebarOpen(false); }}
           onNewConv={handleCreateNewConversation}
           onDeleteConv={handleDeleteConversation}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
         />
         <ChatWindow
           conversationId={activeConvId}
           activeTitle={conversations.find(c => c.conversation_id === activeConvId)?.title}
           onRefreshConversations={loadConversations}
           onSelectActiveConv={(convId) => setActiveConvId(convId)}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
         />
       </div>
     );

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Sidebar = ({
@@ -8,6 +8,8 @@ export const Sidebar = ({
   onSelectConv,
   onNewConv,
   onDeleteConv,
+  isOpen,
+  onClose,
 }) => {
   const { user, logout } = useAuth();
 
@@ -17,13 +19,18 @@ export const Sidebar = ({
   };
 
   return (
-    <aside className="chat-sidebar">
-      <div className="sidebar-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, fontSize: '1.1rem' }}>
-          <Cpu size={22} style={{ color: '#38bdf8' }} />
-          <span>Praxis</span>
+    <>
+      <div className={`sidebar-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
+      <aside className={`chat-sidebar ${isOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, fontSize: '1.1rem' }}>
+            <Cpu size={22} style={{ color: '#38bdf8' }} />
+            <span>Praxis</span>
+          </div>
+          <button className="sidebar-close-btn" onClick={onClose} title="Close sidebar">
+            <X size={20} />
+          </button>
         </div>
-      </div>
 
       <button className="btn btn-primary new-chat-btn" onClick={onNewConv}>
         <MessageSquarePlus size={18} />
@@ -106,5 +113,6 @@ export const Sidebar = ({
         </div>
       </div>
     </aside>
+    </>
   );
 };

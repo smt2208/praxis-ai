@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X } from 'lucide-react';
+import { Send, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X, Menu } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
 
-export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations, onSelectActiveConv }) => {
+export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations, onSelectActiveConv, onToggleSidebar }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -132,6 +132,9 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       {/* Chat header */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button className="mobile-menu-btn" onClick={onToggleSidebar} title="Open navigation sidebar">
+            <Menu size={20} />
+          </button>
           <MessageSquare size={18} style={{ color: '#818cf8' }} />
           <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{activeTitle || 'New Conversation'}</span>
         </div>
