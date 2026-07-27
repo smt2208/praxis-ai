@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, FilePlus, Cpu, Home, ShieldAlert } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Cpu, Home, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Sidebar = ({
@@ -7,7 +7,6 @@ export const Sidebar = ({
   activeConvId,
   onSelectConv,
   onNewConv,
-  onOpenIngest,
   onGoHome,
 }) => {
   const { user, logout } = useAuth();
@@ -39,17 +38,6 @@ export const Sidebar = ({
         <span>New Conversation</span>
       </button>
 
-      <div style={{ padding: '0 16px', marginBottom: '8px' }}>
-        <button
-          className="btn btn-secondary"
-          style={{ width: '100%', justifyContent: 'flex-start', fontSize: '0.85rem', padding: '8px 12px' }}
-          onClick={onOpenIngest}
-          title="Ingest document or file for RAG Knowledge Team"
-        >
-          <FilePlus size={16} style={{ color: '#34d399' }} />
-          <span>Ingest Knowledge Document</span>
-        </button>
-      </div>
 
       <div style={{ padding: '8px 16px 4px', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
         Recent Chats

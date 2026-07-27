@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, FilePlus, Cpu, Sparkles, MessageSquare, Plus, Paperclip, CheckCircle2, Loader2 } from 'lucide-react';
+import { Send, Cpu, Sparkles, MessageSquare, Plus, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
 
-export const ChatWindow = ({ conversationId, activeTitle, onOpenIngest, onRefreshConversations }) => {
+export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations }) => {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -84,11 +84,19 @@ export const ChatWindow = ({ conversationId, activeTitle, onOpenIngest, onRefres
 
     try {
       const res = await api.ingestFile(file, conversationId);
-      setIngestNotice(`Ingested "${file.name}" (${res.documents_stored} chunks)`);
-      setTimeout(() => setIngestNotice(null), 4000);
+      setIngestNotice(`✓ "${file.name}" ingested (${res.documents_stored} chunks stored)`);
+      setTimeout(() => setIngestNotice(null), 5000);
     } catch (err) {
       console.error('Quick ingestion error:', err);
-      setError(err.message || 'File ingestion failed');
+      // Show a clean, human-readable error — not a raw error code
+      const msg = err.message || '';
+      if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
+        setError('File is too large. Please upload a smaller document (max ~10 MB).');
+      } else if (msg.includes('500')) {
+        setError('The server could not process this file. Try a different format (PDF, DOCX, TXT).');
+      } else {
+        setError('File upload failed. Please check the file and try again.');
+      }
     } finally {
       setIngesting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -111,6 +119,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onOpenIngest, onRefres
 
   return (
     <main className="chat-main">
+      {/* Chat header — only conversation title, no Ingest Doc button here */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <MessageSquare size={18} style={{ color: '#38bdf8' }} />
@@ -119,15 +128,6 @@ export const ChatWindow = ({ conversationId, activeTitle, onOpenIngest, onRefres
             {conversationId.substring(0, 8)}...
           </span>
         </div>
-
-        <button
-          className="btn btn-secondary"
-          style={{ padding: '6px 14px', fontSize: '0.85rem' }}
-          onClick={onOpenIngest}
-        >
-          <FilePlus size={16} style={{ color: '#34d399' }} />
-          <span>Ingest Doc</span>
-        </button>
       </div>
 
       <div className="messages-container">

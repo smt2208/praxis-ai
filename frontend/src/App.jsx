@@ -18,7 +18,9 @@ import './styles/chat.css';
 
 const MainLayout = () => {
   const { isAuthenticated, loading } = useAuth();
-  const [currentView, setCurrentView] = useState('landing'); // 'landing' or 'chat'
+  const [currentView, setCurrentView] = useState(
+    () => localStorage.getItem('praxis_view') || 'landing'
+  ); // persist across refreshes
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalTab, setAuthModalTab] = useState('login');
   
@@ -28,12 +30,17 @@ const MainLayout = () => {
   const [ingestModalOpen, setIngestModalOpen] = useState(false);
   const initialChatCreatedRef = useRef(false);
 
-  // Switch to chat view if authenticated and user clicks launch
+  // When authenticated & in chat view: load conversations (also fires on page refresh)
   useEffect(() => {
     if (isAuthenticated && currentView === 'chat') {
       loadConversations();
     }
-  }, [isAuthenticated, currentView]);
+    // If session expired / logged out while on chat, bounce back to landing
+    if (!isAuthenticated && !loading && currentView === 'chat') {
+      setCurrentView('landing');
+      localStorage.setItem('praxis_view', 'landing');
+    }
+  }, [isAuthenticated, currentView, loading]);
 
   const loadConversations = async () => {
     try {
@@ -62,6 +69,12 @@ const MainLayout = () => {
       return;
     }
     setCurrentView('chat');
+    localStorage.setItem('praxis_view', 'chat');
+  };
+
+  const handleGoHome = () => {
+    setCurrentView('landing');
+    localStorage.setItem('praxis_view', 'landing');
   };
 
   const handleCreateNewConversation = async () => {
@@ -102,13 +115,11 @@ const MainLayout = () => {
           activeConvId={activeConvId}
           onSelectConv={(id) => setActiveConvId(id)}
           onNewConv={handleCreateNewConversation}
-          onOpenIngest={() => setIngestModalOpen(true)}
-          onGoHome={() => setCurrentView('landing')}
+          onGoHome={handleGoHome}
         />
         <ChatWindow
           conversationId={activeConvId}
           activeTitle={conversations.find(c => c.conversation_id === activeConvId)?.title}
-          onOpenIngest={() => setIngestModalOpen(true)}
           onRefreshConversations={loadConversations}
         />
         <DocumentIngestModal
