@@ -37,17 +37,5 @@ async def get_current_user(
         raise credentials_exception
 
     # Return a lightweight dict — avoids a DB round-trip on every request.
-    # Switch to get_user_by_id if you need fresh DB data per request.
     return {"id": user_id, "email": payload.get("email")}
 
-
-async def get_current_user_with_db(
-    auth: HTTPAuthorizationCredentials = Depends(_security_scheme),
-    # We accept the pool via a separate dependency injected in main.py
-) -> dict:
-    """
-    Variant that verifies the user still exists in DB.
-    Slightly heavier — use on sensitive routes like /admin.
-    Wire pool via Depends(get_pool) when using this.
-    """
-    raise NotImplementedError("Inject pool via Depends(get_pool) before using this variant.")

@@ -30,11 +30,6 @@ settings = get_settings()
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 
 
-# --- Qdrant collection setup -------------------------------------------
-
-
-
-
 # --- Step 1: Download file from URL ------------------------------------
 
 async def download_file(url: str) -> Path:

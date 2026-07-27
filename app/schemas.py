@@ -36,18 +36,6 @@ class UserMeResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------
-# Users (legacy public endpoint — kept for backward compat)
-# -----------------------------------------------------------------------
-
-class UserCreateRequest(BaseModel):
-    email: str
-
-class UserResponse(BaseModel):
-    user_id: str
-    email: str
-
-
-# -----------------------------------------------------------------------
 # Conversations
 # -----------------------------------------------------------------------
 

@@ -159,6 +159,15 @@ async def delete_conversation(pool: asyncpg.Pool, conversation_id: str, user_id:
     return result == "DELETE 1"
 
 
+async def verify_conversation_ownership(pool: asyncpg.Pool, conversation_id: str, user_id: str) -> bool:
+    """Return True if the conversation belongs to the given user."""
+    row = await pool.fetchrow(
+        "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id, user_id,
+    )
+    return row is not None
+
+
 async def create_user(pool: asyncpg.Pool, email: str, hashed_password: str) -> str:
     """Create a new user with a hashed password and return its UUID."""
     row = await pool.fetchrow(

@@ -1,16 +1,18 @@
 import os
-import shutil
 import tempfile
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import mark_conversation_has_documents, add_conversation_document
+from app.database import mark_conversation_has_documents, add_conversation_document, verify_conversation_ownership
 from app.schemas import IngestRequest, IngestResponse
 from scripts.ingestion import ingest_document
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["Ingestion"])
+
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.txt', '.md'}
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
 
 
 @router.post("", response_model=IngestResponse)
@@ -22,6 +24,10 @@ async def ingest(
     """
     Ingest a document from a URL into the authenticated user's private knowledge base.
     """
+    owns = await verify_conversation_ownership(pool, body.conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
     try:
         count = await ingest_document(
             source_url=body.source_url,
@@ -50,9 +56,20 @@ async def ingest_file(
     """
     Ingest a document directly via file upload (multipart/form-data).
     """
+    owns = await verify_conversation_ownership(pool, conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
     _, ext = os.path.splitext(file.filename or "")
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Maximum upload size is 20 MB.")
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-        shutil.copyfileobj(file.file, tmp)
+        tmp.write(contents)
         tmp_path = tmp.name
 
     try:

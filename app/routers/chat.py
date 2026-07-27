@@ -11,6 +11,7 @@ from app.middleware.rate_limit import limiter
 from app.database import (
     get_history, save_message, get_conversation_has_documents,
     get_conversation_title, update_conversation_title,
+    verify_conversation_ownership,
 )
 from app.schemas import ChatRequest, ChatResponse
 from agents.orchestrator import invoke_graph
@@ -31,6 +32,11 @@ async def chat(
     - Reads user identity from JWT.
     - Fetches clean history from DB, runs the multi-agent graph, persists results.
     """
+    # 0. Verify the user owns this conversation
+    owns = await verify_conversation_ownership(pool, body.conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
     # 1. Fetch conversation history + check if conversation has documents (one concurrent batch)
     history, has_documents = await asyncio.gather(
         get_history(pool, body.conversation_id, limit=20),

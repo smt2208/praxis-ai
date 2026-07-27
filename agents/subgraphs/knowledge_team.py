@@ -22,7 +22,6 @@ from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
 
 from agents.tools import tavily_tool
 from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN, CRITIC_SYSTEM
@@ -87,7 +86,11 @@ def parallel_fetch_node(state: KnowledgeState) -> dict:
     async def _gather() -> tuple[str, str]:
         return await asyncio.gather(_run_rag(), _run_web())
 
-    rag_results, web_results = asyncio.run(_gather())
+    loop = asyncio.new_event_loop()
+    try:
+        rag_results, web_results = loop.run_until_complete(_gather())
+    finally:
+        loop.close()
     return {"rag_results": rag_results, "web_results": web_results}
 
 
@@ -139,7 +142,7 @@ def critic_node(state: KnowledgeState) -> dict:
 
 def _after_critic(state: KnowledgeState) -> str:
     """Route to retry synthesizer once if critic failed, otherwise end."""
-    if state["critic_feedback"] and state.get("retry_count", 0) < 1:
+    if state["critic_feedback"] and state.get("retry_count", 0) <= 1:
         return "retry"
     return "done"
 

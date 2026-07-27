@@ -8,7 +8,6 @@ import { Footer } from './components/landing/Footer';
 import { AuthModal } from './components/auth/AuthModal';
 import { Sidebar } from './components/chat/Sidebar';
 import { ChatWindow } from './components/chat/ChatWindow';
-import { DocumentIngestModal } from './components/chat/DocumentIngestModal';
 import { api } from './services/api';
 
 import './styles/index.css';
@@ -24,7 +23,6 @@ const MainLayout = () => {
   // Chat state
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
-  const [ingestModalOpen, setIngestModalOpen] = useState(false);
   const initialChatCreatedRef = useRef(false);
 
   // When user becomes authenticated, load their conversations
@@ -104,11 +102,6 @@ const MainLayout = () => {
           activeTitle={conversations.find(c => c.conversation_id === activeConvId)?.title}
           onRefreshConversations={loadConversations}
           onSelectActiveConv={(convId) => setActiveConvId(convId)}
-        />
-        <DocumentIngestModal
-          isOpen={ingestModalOpen}
-          onClose={() => setIngestModalOpen(false)}
-          conversationId={activeConvId}
         />
       </div>
     );

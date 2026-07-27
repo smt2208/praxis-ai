@@ -20,6 +20,7 @@ from app.auth.security import (
     create_access_token, create_refresh_token,
 )
 from app.auth.dependencies import get_current_user
+from app.dependencies import get_pool
 from app.database import (
     create_user, get_user_by_email, get_user_by_id,
     save_refresh_token, get_refresh_token,
@@ -32,12 +33,6 @@ from app.schemas import (
 from app.middleware.rate_limit import limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
-
-
-# --- Pool dependency ---------------------------------------------------
-
-async def get_pool(request: Request) -> asyncpg.Pool:
-    return request.app.state.db_pool
 
 
 # --- Helpers -----------------------------------------------------------

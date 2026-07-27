@@ -5,7 +5,7 @@ from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
 from app.database import (
     get_history, create_conversation, get_conversations_by_user, delete_conversation,
-    get_conversation_documents,
+    get_conversation_documents, verify_conversation_ownership,
 )
 from app.schemas import (
     ConversationCreateRequest, ConversationResponse,
@@ -53,6 +53,9 @@ async def get_messages(
     current_user: dict = Depends(get_current_user),
 ):
     """Fetch the message history for a conversation (must belong to the user)."""
+    owns = await verify_conversation_ownership(pool, conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
     rows = await get_history(pool, conversation_id, limit=50)
     return [MessageResponse(role=r["role"], content=r["content"]) for r in rows]
 
@@ -64,6 +67,9 @@ async def get_documents(
     current_user: dict = Depends(get_current_user),
 ):
     """Fetch filenames of ingested documents for a conversation."""
+    owns = await verify_conversation_ownership(pool, conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
     return await get_conversation_documents(pool, conversation_id)
 
 

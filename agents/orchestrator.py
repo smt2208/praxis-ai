@@ -8,10 +8,9 @@ and returns the final answer. No checkpointer — fully stateless.
 from typing import TypedDict, Literal, Annotated
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import create_react_agent
 
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
@@ -174,8 +173,6 @@ def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id:
     has_documents  : True only if the conversation has successfully ingested at least one document
     Returns {"answer": str, "route": str}
     """
-    from langchain_core.messages import HumanMessage, AIMessage
-
     messages: list[BaseMessage] = []
     for msg in history:
         if msg["role"] == "user":

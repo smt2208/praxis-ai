@@ -5,7 +5,6 @@ Initialized once at import time.
 """
 import os
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_community.utilities import ArxivAPIWrapper
 from langchain_core.tools import Tool
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore, RetrievalMode
