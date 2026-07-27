@@ -5,11 +5,10 @@ export const Footer = () => {
   return (
     <footer className="footer">
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <Cpu size={18} style={{ color: '#38bdf8' }} />
-        <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>Praxis Engine</span>
+        <Cpu size={18} style={{ color: '#818cf8' }} />
+        <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>Praxis.ai</span>
       </div>
-      <div>Stateless Hierarchical Multi-Agent API Platform</div>
-      <div>© {new Date().getFullYear()} Praxis. All rights reserved.</div>
+      <div>© {new Date().getFullYear()} Praxis.ai. All rights reserved.</div>
     </footer>
   );
 };
