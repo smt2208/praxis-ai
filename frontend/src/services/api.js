@@ -136,6 +136,79 @@ export const api = {
     body: JSON.stringify({ conversation_id: conversationId, message }),
   }),
 
+  sendMessageStream: async (conversationId, message, { onAgentStart, onToken, onDone, onError, signal } = {}) => {
+    let accessToken = localStorage.getItem('access_token');
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    let response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ conversation_id: conversationId, message }),
+      signal,
+    });
+
+    if (response.status === 401) {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        const refreshed = await refreshTokenPair(refreshToken);
+        if (refreshed) {
+          headers['Authorization'] = `Bearer ${localStorage.getItem('access_token')}`;
+          response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ conversation_id: conversationId, message }),
+            signal,
+          });
+        }
+      }
+    }
+
+    if (!response.ok || !response.body) {
+      throw new Error(`Stream failed with status ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        const lines = part.split('\n');
+        let eventType = 'message';
+        let dataStr = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) eventType = line.slice(6).trim();
+          else if (line.startsWith('data:')) dataStr += line.slice(5).trim();
+        }
+
+        if (!dataStr) continue;
+        try {
+          const data = JSON.parse(dataStr);
+          if (eventType === 'agent_start' && onAgentStart) onAgentStart(data);
+          else if (eventType === 'token' && onToken) onToken(data);
+          else if (eventType === 'done' && onDone) onDone(data);
+          else if (eventType === 'error' && onError) onError(data);
+        } catch (e) {
+          // ignore parse error
+        }
+      }
+    }
+  },
+
   // Ingestion
   ingestUrl: (sourceUrl, conversationId) => request('/api/v1/ingest', {
     method: 'POST',

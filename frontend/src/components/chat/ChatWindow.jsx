@@ -83,13 +83,59 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
     try {
       const activeId = await ensureActiveConversation();
-      const res = await api.sendMessage(activeId, text);
-      const assistantMsg = {
-        role: 'assistant',
-        content: res.answer,
-        route_taken: res.route_taken,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+
+      // Add optimistic placeholder for assistant response
+      setMessages((prev) => [...prev, { role: 'assistant', content: '', route_taken: '' }]);
+
+      let streamFailed = false;
+
+      try {
+        await api.sendMessageStream(activeId, text, {
+          onAgentStart: (data) => {
+            if (data.agent) {
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.role === 'assistant') {
+                  updated[updated.length - 1] = { ...last, route_taken: data.agent };
+                }
+                return updated;
+              });
+            }
+          },
+          onToken: (data) => {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last && last.role === 'assistant') {
+                updated[updated.length - 1] = {
+                  ...last,
+                  content: last.content + data.content,
+                  route_taken: data.agent || last.route_taken,
+                };
+              }
+              return updated;
+            });
+          },
+          onError: (data) => {
+            streamFailed = true;
+          },
+        });
+      } catch (streamErr) {
+        streamFailed = true;
+      }
+
+      // Fallback if SSE streaming failed or produced no content
+      if (streamFailed) {
+        // Remove the empty optimistic message
+        setMessages((prev) => prev.slice(0, -1));
+        const res = await api.sendMessage(activeId, text);
+        setMessages((prev) => [...prev, {
+          role: 'assistant',
+          content: res.answer,
+          route_taken: res.route_taken,
+        }]);
+      }
 
       if (onRefreshConversations) {
         setTimeout(() => onRefreshConversations(), 1000);

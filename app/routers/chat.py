@@ -1,6 +1,8 @@
 import asyncio
+import json
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -14,7 +16,7 @@ from app.database import (
     verify_conversation_ownership,
 )
 from app.schemas import ChatRequest, ChatResponse
-from agents.orchestrator import invoke_graph
+from agents.orchestrator import invoke_graph, astream_graph_events
 
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
@@ -76,6 +78,72 @@ async def chat(
         answer=result["answer"],
         route_taken=result["route"],
     )
+
+
+@router.post("/chat/stream")
+@limiter.limit("20/minute")
+async def chat_stream(
+    request: Request,
+    body: ChatRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Streaming chat endpoint via Server-Sent Events (SSE).
+    - Verifies conversation ownership.
+    - Persists user message immediately.
+    - Streams real-time agent status & token chunks.
+    - Persists assistant reply upon completion.
+    """
+    owns = await verify_conversation_ownership(pool, body.conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    history, has_documents = await asyncio.gather(
+        get_history(pool, body.conversation_id, limit=20),
+        get_conversation_has_documents(pool, body.conversation_id),
+    )
+
+    await save_message(pool, body.conversation_id, "user", body.message)
+
+    async def event_generator():
+        full_answer = []
+
+        try:
+            async for evt in astream_graph_events(
+                query=body.message,
+                history=history,
+                user_id=current_user["id"],
+                conversation_id=body.conversation_id,
+                has_documents=has_documents,
+            ):
+                if await request.is_disconnected():
+                    break
+
+                event_type = evt.get("event", "message")
+                data = evt.get("data", {})
+
+                if event_type == "token":
+                    content = data.get("content", "")
+                    if content:
+                        full_answer.append(content)
+
+                # Send formatted SSE message block
+                yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+            final_text = "".join(full_answer)
+            if final_text:
+                await save_message(pool, body.conversation_id, "assistant", final_text)
+
+            # Auto-title if new conversation
+            current_title = await get_conversation_title(pool, body.conversation_id)
+            if current_title == "New Conversation":
+                asyncio.create_task(_auto_generate_title(pool, body.conversation_id, body.message))
+
+        except Exception as err:
+            yield f"event: error\ndata: {json.dumps({'message': str(err)})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 async def _auto_generate_title(pool: asyncpg.Pool, conversation_id: str, first_message: str):

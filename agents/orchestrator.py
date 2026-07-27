@@ -196,3 +196,77 @@ def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id:
         "answer": result["final_answer"],
         "route": result["route"],
     }
+
+
+async def astream_graph_events(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool):
+    """
+    Async generator for SSE streaming.
+    Yields dicts with {"event": ..., "data": ...}
+    - agent_start: fired when routing decisions or department nodes start
+    - token      : fired as LLM tokens are generated
+    - done       : fired when graph execution completes
+    """
+    import asyncio
+    from agents.subgraphs.general_agent import astream_general_agent
+
+    messages: list[BaseMessage] = []
+    for msg in history:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        else:
+            messages.append(AIMessage(content=msg["content"]))
+
+    # Step 1: CEO Router
+    yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Analyzing query intent..."}}
+
+    doc_context = (
+        "IMPORTANT: The user HAS uploaded documents to this conversation. "
+        "If their question could relate to the uploaded documents, route to knowledge_team."
+        if has_documents
+        else "The user has NOT uploaded any documents to this conversation. Do NOT route to knowledge_team."
+    )
+    history_text = "\n".join(f"{m.type.upper()}: {m.content}" for m in messages)
+    routing_messages = [
+        SystemMessage(content=ROUTER_SYSTEM),
+        HumanMessage(content=(
+            f"{doc_context}\n\nConversation so far:\n{history_text}\n\nLatest user message: {query}"
+            if history_text else f"{doc_context}\n\nUser message: {query}"
+        )),
+    ]
+    decision: RouteDecision = await asyncio.to_thread(_router_llm.invoke, routing_messages)
+    route = decision.route
+    if route == "knowledge_team" and not has_documents:
+        route = "general"
+
+    yield {"event": "agent_start", "data": {"agent": route, "message": f"Routed to {route}"}}
+
+    # Step 2: Department execution & token streaming
+    if route == "general":
+        async for token in astream_general_agent(query, messages):
+            yield {"event": "token", "data": {"agent": "general", "content": token}}
+    elif route == "follow_up":
+        followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + messages + [HumanMessage(content=query)]
+        async for chunk in _followup_llm.astream(followup_messages):
+            if chunk.content:
+                yield {"event": "token", "data": {"agent": "follow_up", "content": chunk.content}}
+    elif route == "knowledge_team":
+        yield {"event": "agent_start", "data": {"agent": "knowledge_team", "message": "Searching document knowledge base..."}}
+        answer = await asyncio.to_thread(
+            run_knowledge_team,
+            query,
+            history=messages,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+        yield {"event": "token", "data": {"agent": "knowledge_team", "content": answer}}
+    elif route == "research_team":
+        yield {"event": "agent_start", "data": {"agent": "research_team", "message": "Executing multi-step deep research..."}}
+        answer = await asyncio.to_thread(
+            run_research_team,
+            query,
+            history=messages,
+        )
+        yield {"event": "token", "data": {"agent": "research_team", "content": answer}}
+
+    yield {"event": "done", "data": {"route": route}}
+

@@ -55,3 +55,23 @@ def run_general_agent(query: str, history: list) -> str:
     messages = list(history) + [HumanMessage(content=query)]
     result = _general_agent.invoke({"messages": messages}, config={"recursion_limit": 4})
     return result["messages"][-1].content
+
+
+async def astream_general_agent(query: str, history: list):
+    """Async generator yielding LLM token strings in real-time."""
+    messages = list(history) + [HumanMessage(content=query)]
+    async for mode, chunk in _general_agent.astream(
+        {"messages": messages},
+        config={"recursion_limit": 4},
+        stream_mode=["messages"],
+    ):
+        if mode == "messages":
+            message_chunk, metadata = chunk
+            content = message_chunk.content
+            if isinstance(content, str) and content:
+                yield content
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                        yield block["text"]
+
