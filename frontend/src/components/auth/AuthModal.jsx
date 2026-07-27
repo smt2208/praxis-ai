@@ -23,7 +23,7 @@ export const AuthModal = ({ isOpen, onClose, initialTab = 'login' }) => {
 
         <div className="auth-header">
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#38bdf8', marginBottom: '8px' }}>
-            <Cpu size={28} />
+            <img src="/logo.png" alt="Praxis Logo" style={{ width: 36, height: 36, borderRadius: '8px', objectFit: 'contain' }} />
           </div>
           <h2>Welcome to Praxis</h2>
           <p>Access your autonomous multi-agent workspace</p>

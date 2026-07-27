@@ -53,7 +53,7 @@ export const MessageItem = ({ message }) => {
   return (
     <div className={`message-bubble ${isUser ? 'user' : 'assistant'}`}>
       <div className="message-avatar">
-        {isUser ? <User size={18} /> : <Cpu size={18} />}
+        {isUser ? <User size={18} /> : <img src="/logo.png" alt="Praxis AI" style={{ width: 20, height: 20, borderRadius: '4px', objectFit: 'contain' }} />}
       </div>
 
       <div className="message-content-wrapper">

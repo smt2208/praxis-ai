@@ -24,7 +24,7 @@ export const Sidebar = ({
       <aside className={`chat-sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, fontSize: '1.1rem' }}>
-            <Cpu size={22} style={{ color: '#38bdf8' }} />
+            <img src="/logo.png" alt="Praxis Logo" style={{ width: 26, height: 26, borderRadius: '6px', objectFit: 'contain' }} />
             <span>Praxis</span>
           </div>
           <button className="sidebar-close-btn" onClick={onClose} title="Close sidebar">

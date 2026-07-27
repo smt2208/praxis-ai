@@ -212,7 +212,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             <Sparkles size={36} style={{ color: 'var(--primary)', marginBottom: '12px' }} />
             <h4 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Praxis Ready</h4>
             <p style={{ fontSize: '0.9rem' }}>
-              Ask a question, request deep research, or upload a document via the <strong>+</strong> button.
+              Ask a question, request deep research, or upload a document.
             </p>
           </div>
         ) : (
@@ -315,7 +315,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
           <textarea
             className="chat-textarea"
-            placeholder={ingesting ? 'Waiting for document to finish uploading...' : 'Ask anything, attach a document (+), or request deep research...'}
+            placeholder={ingesting ? 'Waiting for document to finish uploading...' : 'Ask me anything...'}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
