@@ -53,5 +53,5 @@ def run_general_agent(query: str, history: list) -> str:
     """
     # Include full conversation history so the agent has context
     messages = list(history) + [HumanMessage(content=query)]
-    result = _general_agent.invoke({"messages": messages})
+    result = _general_agent.invoke({"messages": messages}, config={"recursion_limit": 4})
     return result["messages"][-1].content

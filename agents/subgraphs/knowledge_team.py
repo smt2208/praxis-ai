@@ -75,13 +75,13 @@ def parallel_fetch_node(state: KnowledgeState) -> dict:
 
     async def _run_rag() -> str:
         agent = create_react_agent(_llm, [rag_tool])
-        result = await agent.ainvoke({"messages": [HumanMessage(content=search_query)]})
+        result = await agent.ainvoke({"messages": [HumanMessage(content=search_query)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content
 
     async def _run_web() -> str:
         agent = create_react_agent(_llm, [tavily_tool])
         prompt = f"Search for the latest information about: {search_query}"
-        result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
+        result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content
 
     async def _gather() -> tuple[str, str]:

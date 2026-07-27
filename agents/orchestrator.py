@@ -117,10 +117,9 @@ def general_agent_node(state: OrchestratorState) -> dict:
 
 def follow_up_node(state: OrchestratorState) -> dict:
     """Handles conversational replies, rephrasing, or summaries using history."""
-    agent = create_react_agent(_followup_llm, [], prompt=FOLLOW_UP_SYSTEM)  # no tools — history only
-    result = agent.invoke({"messages": state["messages"]})
-    answer = result["messages"][-1].content
-    return {"final_answer": answer}
+    messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + list(state["messages"])
+    response = _followup_llm.invoke(messages)
+    return {"final_answer": response.content}
 
 
 # --- Routing function --------------------------------------------------

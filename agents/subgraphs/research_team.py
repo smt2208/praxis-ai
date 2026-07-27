@@ -80,7 +80,8 @@ def researcher_node(state: ResearchState) -> dict:
         total_steps=len(plan),
         current_step=current_step
     )
-    result = agent.invoke({"messages": [HumanMessage(content=prompt)]})
+    # recursion_limit=4 prevents runaway tool-calling loops
+    result = agent.invoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
     finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
 
     return {
