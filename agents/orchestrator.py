@@ -81,6 +81,7 @@ def ceo_node(state: OrchestratorState) -> dict:
     if route == "knowledge_team" and not state["has_documents"]:
         route = "general"
 
+    print(f"[CEO Router] Query: '{state['query'][:60]}' -> Routed to: {route}", flush=True)
     return {"route": route}
 
 
@@ -101,6 +102,7 @@ def knowledge_team_node(state: OrchestratorState) -> dict:
 # --- Node: Research Team wrapper ---------------------------------------
 
 def research_team_node(state: OrchestratorState) -> dict:
+    print(f"[Deep Research Team] Executing deep research graph for query: '{state['query']}'", flush=True)
     answer = run_research_team(state["query"], history=state["messages"][:-1])
     return {"final_answer": answer}
 

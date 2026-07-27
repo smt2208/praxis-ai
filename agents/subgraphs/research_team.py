@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
-from agents.tools import tavily_tool, arxiv_tool
+from agents.tools import tavily_tool, arxiv_tool, wikipedia_tool, pubmed_tool
 from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
 
 
@@ -55,6 +55,7 @@ def planner_node(state: ResearchState) -> dict:
     plan = [line.lstrip("0123456789. )").strip() for line in lines if line]
     if not plan:
         plan = [state["query"]]
+    print(f"[Deep Research Agent] Generated research plan with {len(plan)} steps: {plan}", flush=True)
     return {"research_plan": plan, "iteration": 0}
 
 
@@ -73,7 +74,9 @@ def researcher_node(state: ResearchState) -> dict:
     step_idx = min(iteration, len(plan) - 1)
     current_step = plan[step_idx]
 
-    agent = create_react_agent(_llm, [arxiv_tool, tavily_tool])
+    print(f"[Deep Research Agent] Executing Step {step_idx + 1}/{len(plan)}: '{current_step}'", flush=True)
+    # Deep Agent equipped with multi-domain research tools (Academic, Medical, Encyclopedic, Web)
+    agent = create_react_agent(_llm, [arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
     prompt = RESEARCHER_HUMAN.format(
         query=state['query'],
         step_num=step_idx + 1,
@@ -83,6 +86,7 @@ def researcher_node(state: ResearchState) -> dict:
     # recursion_limit=4 prevents runaway tool-calling loops
     result = agent.invoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
     finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
+    print(f"[Deep Research Agent] Step {step_idx + 1} completed.", flush=True)
 
     return {
         "findings": [finding],
