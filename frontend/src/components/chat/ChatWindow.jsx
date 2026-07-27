@@ -119,14 +119,11 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   return (
     <main className="chat-main">
-      {/* Chat header — only conversation title, no Ingest Doc button here */}
+      {/* Chat header — only conversation title */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <MessageSquare size={18} style={{ color: '#38bdf8' }} />
-          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{activeTitle || 'Active Session'}</span>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>
-            {conversationId.substring(0, 8)}...
-          </span>
+          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{activeTitle || 'New Conversation'}</span>
         </div>
       </div>
 

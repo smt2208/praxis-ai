@@ -29,6 +29,7 @@ from app.schemas import (
     RegisterRequest, LoginRequest, RefreshRequest, LogoutRequest,
     TokenResponse, UserMeResponse,
 )
+from app.middleware.rate_limit import limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
@@ -58,7 +59,8 @@ async def _issue_tokens(pool: asyncpg.Pool, user_id: str, email: str) -> TokenRe
 # --- Endpoints ---------------------------------------------------------
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, pool: asyncpg.Pool = Depends(get_pool)):
+@limiter.limit("5/minute")   # brute-force protection: max 5 registration attempts per minute per IP
+async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool = Depends(get_pool)):
     """
     Register a new user account.
     Returns both tokens so the client is immediately authenticated.
@@ -75,7 +77,8 @@ async def register(body: RegisterRequest, pool: asyncpg.Pool = Depends(get_pool)
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, pool: asyncpg.Pool = Depends(get_pool)):
+@limiter.limit("10/minute")  # brute-force protection: max 10 login attempts per minute per IP
+async def login(request: Request, body: LoginRequest, pool: asyncpg.Pool = Depends(get_pool)):
     """
     Authenticate with email + password.
     Returns both tokens on success.

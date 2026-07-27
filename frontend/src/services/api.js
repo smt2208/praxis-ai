@@ -148,4 +148,8 @@ export const api = {
       body: formData,
     });
   },
+
+  deleteConversation: (conversationId) => request(`/api/v1/conversations/${conversationId}`, {
+    method: 'DELETE',
+  }),
 };

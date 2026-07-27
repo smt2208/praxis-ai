@@ -81,6 +81,20 @@ const MainLayout = () => {
     }
   };
 
+  const handleDeleteConversation = async (convId) => {
+    try {
+      await api.deleteConversation(convId);
+      // Remove from local list
+      setConversations((prev) => prev.filter(c => c.conversation_id !== convId));
+      // If the deleted one was active, open a new conversation
+      if (convId === activeConvId) {
+        await handleCreateNewConversation();
+      }
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#090d16', color: '#38bdf8' }}>
@@ -98,6 +112,7 @@ const MainLayout = () => {
           activeConvId={activeConvId}
           onSelectConv={(id) => setActiveConvId(id)}
           onNewConv={handleCreateNewConversation}
+          onDeleteConv={handleDeleteConversation}
         />
         <ChatWindow
           conversationId={activeConvId}

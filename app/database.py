@@ -129,6 +129,19 @@ async def get_conversations_by_user(pool: asyncpg.Pool, user_id: str) -> list[di
     return [dict(r) for r in rows]
 
 
+async def delete_conversation(pool: asyncpg.Pool, conversation_id: str, user_id: str) -> bool:
+    """
+    Delete a conversation (and all its messages via CASCADE).
+    Returns True if a row was deleted, False if not found or not owned by user.
+    """
+    result = await pool.execute(
+        "DELETE FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id, user_id,
+    )
+    # asyncpg returns 'DELETE N' — check if 1 row was affected
+    return result == "DELETE 1"
+
+
 async def create_user(pool: asyncpg.Pool, email: str, hashed_password: str) -> str:
     """Create a new user with a hashed password and return its UUID."""
     row = await pool.fetchrow(

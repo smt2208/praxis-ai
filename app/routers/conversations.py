@@ -1,10 +1,10 @@
 import asyncpg
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
 from app.database import (
-    get_history, create_conversation, get_conversations_by_user,
+    get_history, create_conversation, get_conversations_by_user, delete_conversation,
 )
 from app.schemas import (
     ConversationCreateRequest, ConversationResponse,
@@ -54,3 +54,15 @@ async def get_messages(
     """Fetch the message history for a conversation (must belong to the user)."""
     rows = await get_history(pool, conversation_id, limit=50)
     return [MessageResponse(role=r["role"], content=r["content"]) for r in rows]
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conv(
+    conversation_id: str,
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete a conversation and all its messages. Only the owner can delete."""
+    deleted = await delete_conversation(pool, conversation_id, current_user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
