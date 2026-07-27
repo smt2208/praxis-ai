@@ -7,10 +7,8 @@ export const Navbar = ({ onOpenAuth, onGoToChat }) => {
 
   return (
     <header className="navbar">
-      <a href="#" className="nav-brand">
-        <div className="brand-icon">
-          <Cpu size={22} />
-        </div>
+      <a href="#" className="nav-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <img src="/logo.png" alt="Praxis Logo" style={{ width: 28, height: 28, borderRadius: '6px', objectFit: 'contain' }} />
         <span>Praxis</span>
       </a>
 

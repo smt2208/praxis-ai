@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { ToastNotification } from '../components/common/ToastNotification';
 
 const AuthContext = createContext(null);
 
@@ -7,6 +8,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // Check auth state on mount
   useEffect(() => {
@@ -49,6 +56,8 @@ export const AuthProvider = ({ children }) => {
       // Fetch user profile
       const userData = await api.getCurrentUser();
       setUser(userData);
+      const name = userData.email ? userData.email.split('@')[0] : 'user';
+      showToast(`✨ Welcome back, ${name}! Workspace ready.`, 'login');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Login failed';
@@ -67,6 +76,8 @@ export const AuthProvider = ({ children }) => {
       // Fetch user profile
       const userData = await api.getCurrentUser();
       setUser(userData);
+      const name = userData.email ? userData.email.split('@')[0] : 'user';
+      showToast(`🚀 Welcome to Praxis, ${name}! Your AI workspace is ready.`, 'register');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Registration failed';
@@ -85,6 +96,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     logoutLocally();
+    showToast('👋 Logged out successfully. See you soon!', 'logout');
   };
 
   return (
@@ -100,6 +112,7 @@ export const AuthProvider = ({ children }) => {
         logout,
       }}
     >
+      <ToastNotification toast={toast} onClose={() => setToast(null)} />
       {children}
     </AuthContext.Provider>
   );

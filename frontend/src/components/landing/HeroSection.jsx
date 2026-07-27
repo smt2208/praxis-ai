@@ -5,13 +5,8 @@ import { useAuth } from '../../context/AuthContext';
 export const HeroSection = ({ onOpenAuth, onGoToChat }) => {
   const { isAuthenticated } = useAuth();
 
-  return (
+   return (
     <section className="hero-section">
-      <div className="hero-pill">
-        <Sparkles size={16} />
-        <span>Next-Generation AI Intelligence</span>
-      </div>
-
       <h1 className="hero-title">
         Supercharge Your Thinking with <span className="gradient-text">Praxis</span>
       </h1>
