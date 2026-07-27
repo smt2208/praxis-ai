@@ -20,7 +20,7 @@ export const MessageItem = ({ message }) => {
         return (
           <span className="badge badge-purple route-badge">
             <Microscope size={12} />
-            <span>Research Team (ArXiv/Web)</span>
+            <span>Deep Research Agent</span>
           </span>
         );
       case 'follow_up':

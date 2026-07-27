@@ -1,32 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* Color System */
-  --bg-dark: #090d16;
-  --bg-card: rgba(15, 23, 42, 0.75);
-  --bg-card-hover: rgba(30, 41, 59, 0.85);
-  --bg-input: #0f172a;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(56, 189, 248, 0.3);
+  /* Color System — Minimalist Soft Slate (Claude / Linear aesthetic) */
+  --bg-dark: #0f1117;
+  --bg-card: rgba(24, 27, 38, 0.7);
+  --bg-card-hover: rgba(35, 39, 54, 0.8);
+  --bg-input: #181b24;
+  --border-color: rgba(255, 255, 255, 0.07);
+  --border-glow: rgba(129, 140, 248, 0.3);
   
-  --primary: #38bdf8;
-  --primary-hover: #0284c7;
-  --primary-glow: rgba(56, 189, 248, 0.25);
+  --primary: #818cf8;
+  --primary-hover: #6366f1;
+  --primary-glow: rgba(129, 140, 248, 0.2);
   
-  --accent-purple: #818cf8;
+  --accent-purple: #a78bfa;
   --accent-emerald: #34d399;
   --accent-amber: #fbbf24;
-  --accent-rose: #f43f5e;
+  --accent-rose: #f87171;
   
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
   
-  /* Layout & Spacing */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
+  /* Layout & Spacing — Pebble Design Tokens */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-pill: 9999px;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
@@ -84,58 +85,60 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* Buttons */
+/* Pebble-Style Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 20px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: var(--radius-md);
+  padding: 9px 18px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: var(--radius-pill);
   border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-  color: #04111d;
-  box-shadow: 0 4px 14px 0 var(--primary-glow);
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 2px 10px 0 var(--primary-glow);
 }
 
 .btn-primary:hover {
+  background: #4f46e5;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px 0 rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.35);
 }
 
 .btn-primary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
   transform: none;
 }
 
 .btn-secondary {
-  background: rgba(30, 41, 59, 0.8);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-main);
   border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover {
-  background: rgba(51, 65, 85, 0.9);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .btn-danger {
-  background: rgba(244, 63, 94, 0.15);
+  background: rgba(248, 113, 113, 0.12);
   color: #fca5a5;
-  border: 1px solid rgba(244, 63, 94, 0.3);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: var(--radius-pill);
 }
 
 .btn-danger:hover {
-  background: rgba(244, 63, 94, 0.25);
+  background: rgba(248, 113, 113, 0.22);
 }
 
 /* Form Controls */
@@ -182,35 +185,34 @@ body {
   margin-top: 2px;
 }
 
-/* Badges */
+/* Badges — Minimalist Pill Style */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .badge-primary {
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--primary);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(129, 140, 248, 0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(129, 140, 248, 0.25);
 }
 
 .badge-purple {
-  background: rgba(129, 140, 248, 0.15);
-  color: var(--accent-purple);
-  border: 1px solid rgba(129, 140, 248, 0.3);
+  background: rgba(167, 139, 250, 0.12);
+  color: #c4b5fd;
+  border: 1px solid rgba(167, 139, 250, 0.25);
 }
 
 .badge-emerald {
-  background: rgba(52, 211, 153, 0.15);
-  color: var(--accent-emerald);
-  border: 1px solid rgba(52, 211, 153, 0.3);
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.25);
 }
 
 /* Animations */
