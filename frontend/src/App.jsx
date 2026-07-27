@@ -45,10 +45,14 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // Start with a fresh new chat thread once per session
+      // On initial login / workspace launch: select most recent conversation or create one if empty
       if (!initialChatCreatedRef.current) {
         initialChatCreatedRef.current = true;
-        await handleCreateNewConversation();
+        if (list.length > 0) {
+          setActiveConvId(list[0].conversation_id);
+        } else {
+          await handleCreateNewConversation();
+        }
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);

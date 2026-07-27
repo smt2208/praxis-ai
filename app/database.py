@@ -123,7 +123,17 @@ async def create_conversation(pool: asyncpg.Pool, user_id: str, title: str = "Ne
 
 
 async def get_conversations_by_user(pool: asyncpg.Pool, user_id: str) -> list[dict]:
-    """Return all conversations belonging to a user, newest first."""
+    """Return all conversations belonging to a user, newest first. Auto-prunes empty unused ones."""
+    # Delete unused empty conversations (no messages and no documents)
+    await pool.execute(
+        """
+        DELETE FROM conversations
+        WHERE user_id = $1
+          AND has_documents = FALSE
+          AND id NOT IN (SELECT DISTINCT conversation_id FROM messages)
+        """,
+        user_id,
+    )
     rows = await pool.fetch(
         """
         SELECT id, title, created_at, updated_at
