@@ -142,6 +142,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       }
     } catch (err) {
       setError(err.message || 'Error processing response');
+      setMessages((prev) => {
+        if (prev.length > 0 && prev[prev.length - 1].role === 'assistant' && !prev[prev.length - 1].content) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
     } finally {
       setSending(false);
       isSendingRef.current = false;
@@ -209,7 +215,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           messages.map((msg, idx) => <MessageItem key={idx} message={msg} />)
         )}
 
-        {sending && (
+        {sending && (messages.length === 0 || messages[messages.length - 1]?.role !== 'assistant') && (
           <div className="message-bubble assistant">
             <div className="message-avatar">
               <Cpu size={18} className="animate-pulse" />

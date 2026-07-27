@@ -50,10 +50,14 @@ export const MessageItem = ({ message }) => {
         <div className="message-content">
           {isUser ? (
             message.content
-          ) : (
+          ) : message.content ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
+          ) : (
+            <span className="animate-pulse" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+              Thinking...
+            </span>
           )}
         </div>
         {!isUser && renderRouteBadge(message.route_taken)}

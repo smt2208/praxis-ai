@@ -247,8 +247,13 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
     elif route == "follow_up":
         followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + messages + [HumanMessage(content=query)]
         async for chunk in _followup_llm.astream(followup_messages):
-            if chunk.content:
-                yield {"event": "token", "data": {"agent": "follow_up", "content": chunk.content}}
+            content = chunk.content
+            if isinstance(content, str) and content:
+                yield {"event": "token", "data": {"agent": "follow_up", "content": content}}
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                        yield {"event": "token", "data": {"agent": "follow_up", "content": block["text"]}}
     elif route == "knowledge_team":
         yield {"event": "agent_start", "data": {"agent": "knowledge_team", "message": "Searching document knowledge base..."}}
         answer = await asyncio.to_thread(

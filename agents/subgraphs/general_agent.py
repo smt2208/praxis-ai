@@ -67,6 +67,16 @@ async def astream_general_agent(query: str, history: list):
     ):
         if mode == "messages":
             message_chunk, metadata = chunk
+
+            # Ignore raw tool output messages (e.g. Tavily search result JSON)
+            msg_type = getattr(message_chunk, "type", None)
+            if msg_type in ("tool", "function"):
+                continue
+
+            # Ignore tool call invocation chunks (LLM calling tools)
+            if getattr(message_chunk, "tool_call_chunks", None) or getattr(message_chunk, "tool_calls", None):
+                continue
+
             content = message_chunk.content
             if isinstance(content, str) and content:
                 yield content
@@ -74,4 +84,5 @@ async def astream_general_agent(query: str, history: list):
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
                         yield block["text"]
+
 
