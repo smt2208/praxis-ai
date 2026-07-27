@@ -27,4 +27,5 @@ COPY . .
 EXPOSE 8000
 
 # Run the FastAPI application using Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# --timeout-keep-alive 300 → keep connections alive up to 5 min (deep research can take ~2 min)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--timeout-keep-alive", "300"]

@@ -18,7 +18,7 @@ from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_
 
 
 # --- Constants ---------------------------------------------------------
-MAX_RESEARCH_ITERATIONS = 5
+MAX_RESEARCH_ITERATIONS = 3   # 3 loops × ~20s each ≈ 60s max — keeps us under Nginx timeout
 
 
 # --- Private state -----------------------------------------------------
