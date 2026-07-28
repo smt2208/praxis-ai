@@ -15,11 +15,13 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isSendingRef = useRef(false);
+  const localConvIdRef = useRef(conversationId);
 
   // Fetch messages history and ingested documents whenever active conversationId changes
   useEffect(() => {
     setUploadingFileName(null);
     setError(null);
+    localConvIdRef.current = conversationId;
 
     // If currently sending a message (e.g. creating a new conversation on the fly), preserve optimistic messages
     if (isSendingRef.current) return;
@@ -58,10 +60,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   // Ensure an active conversation ID exists in DB before performing actions
   const ensureActiveConversation = async () => {
+    if (localConvIdRef.current) return localConvIdRef.current;
     if (conversationId) return conversationId;
 
     const newConv = await api.createConversation('New Conversation');
     const newId = newConv.conversation_id;
+    localConvIdRef.current = newId;
     if (onSelectActiveConv) {
       onSelectActiveConv(newId);
     }
