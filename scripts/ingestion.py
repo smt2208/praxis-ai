@@ -57,9 +57,9 @@ async def download_file(url: str) -> Path:
 
 def parse_document(file_path: Path) -> list[str]:
     """
-    Use high-speed parsing to extract clean text from documents.
-    - Plain text/markdown files (.txt, .md) are read locally instantly.
-    - PDFs/DOCX/PPTX use LlamaParse with fast_mode=True and multi-worker parallelism for 10x speed.
+    High-speed document parser:
+    1. Plain text/markdown files (.txt, .md) are read locally instantly (~0.001s).
+    2. PDFs/DOCX/PPTX use LlamaParse with automatic fallback protection.
     """
     ext = file_path.suffix.lower()
 
@@ -70,20 +70,41 @@ def parse_document(file_path: Path) -> list[str]:
             if content.strip():
                 print(f"[ingestion] Instant local parse for {file_path.name}")
                 return [content]
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[ingestion] Local text parse failed: {e}")
 
-    # 2. High-speed LlamaParse for PDFs, DOCX, PPTX
-    print(f"[ingestion] Invoking LlamaParse (Fast Mode) for {file_path.name}...")
-    parser = LlamaParse(
-        api_key=settings.llama_cloud_api_key,
-        result_type="markdown",
-        fast_mode=True,       # Bypasses heavy multi-modal agent vision loops for 10x speed
-        num_workers=4,        # Parse document pages in parallel
-        verbose=False,
-    )
-    documents = parser.load_data(str(file_path))
-    return [doc.text for doc in documents if doc.text.strip()]
+    # 2. Try LlamaParse (Fast Mode)
+    try:
+        print(f"[ingestion] Invoking LlamaParse (Fast Mode) for {file_path.name}...")
+        parser = LlamaParse(
+            api_key=settings.llama_cloud_api_key,
+            result_type="markdown",
+            fast_mode=True,
+            verbose=False,
+        )
+        documents = parser.load_data(str(file_path))
+        texts = [doc.text for doc in documents if doc.text and doc.text.strip()]
+        if texts:
+            return texts
+    except Exception as exc:
+        print(f"[ingestion] Fast LlamaParse attempt failed: {exc}. Retrying standard mode...", flush=True)
+
+    # 3. Fallback: Standard LlamaParse (guaranteed compatibility across all SDK versions)
+    try:
+        print(f"[ingestion] Invoking Standard LlamaParse for {file_path.name}...")
+        parser = LlamaParse(
+            api_key=settings.llama_cloud_api_key,
+            result_type="markdown",
+            verbose=False,
+        )
+        documents = parser.load_data(str(file_path))
+        texts = [doc.text for doc in documents if doc.text and doc.text.strip()]
+        if texts:
+            return texts
+        raise ValueError("LlamaParse returned no text content.")
+    except Exception as exc:
+        print(f"[ingestion] Standard LlamaParse failed: {exc}", flush=True)
+        raise ValueError(f"Document parsing error: {str(exc)}")
 
 
 # --- Step 3: Chunk text -----------------------------------------------
