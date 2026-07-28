@@ -159,6 +159,46 @@ async def delete_conversation(pool: asyncpg.Pool, conversation_id: str, user_id:
     return result == "DELETE 1"
 
 
+async def delete_conversation_qdrant_chunks(conversation_id: str) -> None:
+    """
+    Delete all vector chunks in Qdrant that belong to the given conversation.
+
+    Called immediately before the Postgres conversation row is deleted so that
+    vector data never becomes orphaned. Errors are caught and logged — a Qdrant
+    blip should not block the user from deleting their conversation in the app.
+
+    Qdrant filter covers both flat payload keys and metadata-nested keys because
+    langchain_qdrant stores them either way depending on the SDK version.
+    """
+    import logging
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+    from app.config import get_settings
+    cfg = get_settings()
+
+    try:
+        client = QdrantClient(url=cfg.qdrant_url, api_key=cfg.qdrant_api_key)
+
+        # Match chunks stored with either flat or nested metadata key
+        conv_filter = Filter(
+            should=[
+                Filter(must=[FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id))]),
+                Filter(must=[FieldCondition(key="metadata.conversation_id", match=MatchValue(value=conversation_id))]),
+            ]
+        )
+
+        client.delete(
+            collection_name=cfg.qdrant_collection_name,
+            points_selector=conv_filter,
+        )
+        logging.info(f"[qdrant] Deleted chunks for conversation {conversation_id}")
+    except Exception as exc:
+        logging.warning(f"[qdrant] Could not delete chunks for conversation {conversation_id}: {exc}")
+
+
+
+
 async def verify_conversation_ownership(pool: asyncpg.Pool, conversation_id: str, user_id: str) -> bool:
     """Return True if the conversation belongs to the given user."""
     row = await pool.fetchrow(

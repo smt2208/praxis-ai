@@ -6,6 +6,7 @@ from app.dependencies import get_pool
 from app.database import (
     get_history, create_conversation, get_conversations_by_user, delete_conversation,
     get_conversation_documents, verify_conversation_ownership,
+    delete_conversation_qdrant_chunks,
 )
 from app.schemas import (
     ConversationCreateRequest, ConversationResponse,
@@ -14,6 +15,7 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["Conversations"])
+
 
 
 @router.get("", response_model=ConversationListResponse)
@@ -79,7 +81,12 @@ async def delete_conv(
     pool: asyncpg.Pool = Depends(get_pool),
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete a conversation and all its messages. Only the owner can delete."""
+    """Delete a conversation, its messages, and all its Qdrant vector chunks. Only the owner can delete."""
+    # Purge Qdrant vector chunks first — so they're never left orphaned if Postgres succeeds.
+    # Errors inside are caught/logged and won't block the user.
+    await delete_conversation_qdrant_chunks(conversation_id)
+
     deleted = await delete_conversation(pool, conversation_id, current_user["id"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found.")
+
