@@ -41,25 +41,34 @@ _general_agent = _build_general_agent()
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
-def run_general_agent(query: str, history: list) -> str:
+def run_general_agent(query: str, history: list, user_tz: str = None) -> str:
     """
     Entry point for the parent CEO graph.
 
     Args:
         query  : the user's latest message
         history: list of LangChain BaseMessage objects (injected by CEO)
+        user_tz: optional user IANA timezone string (e.g. 'Asia/Tokyo')
 
     Returns the final answer string only — private ReAct steps stay hidden.
     """
+    from agents.tools import get_current_time_str
+    current_time = get_current_time_str(user_tz)
+    time_msg = SystemMessage(content=f"CURRENT SYSTEM TIME: {current_time}. IMPORTANT: Always use this date as your reference for 'today', 'latest news', or current events.")
+
     # Include full conversation history so the agent has context
-    messages = list(history) + [HumanMessage(content=query)]
+    messages = [time_msg] + list(history) + [HumanMessage(content=query)]
     result = _general_agent.invoke({"messages": messages}, config={"recursion_limit": 4})
     return result["messages"][-1].content
 
 
-async def astream_general_agent(query: str, history: list):
+async def astream_general_agent(query: str, history: list, user_tz: str = None):
     """Async generator yielding LLM token strings in real-time."""
-    messages = list(history) + [HumanMessage(content=query)]
+    from agents.tools import get_current_time_str
+    current_time = get_current_time_str(user_tz)
+    time_msg = SystemMessage(content=f"CURRENT SYSTEM TIME: {current_time}. IMPORTANT: Always use this date as your reference for 'today', 'latest news', or current events.")
+
+    messages = [time_msg] + list(history) + [HumanMessage(content=query)]
     async for mode, chunk in _general_agent.astream(
         {"messages": messages},
         config={"recursion_limit": 4},

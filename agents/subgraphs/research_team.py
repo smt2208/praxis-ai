@@ -45,8 +45,11 @@ def planner_node(state: ResearchState) -> dict:
     if state.get("history_summary"):
         plan_prompt = f"Context from previous conversation:\n{state['history_summary']}\n\nResearch Task: {state['query']}"
 
+    from datetime import datetime
+    current_time = datetime.now().strftime("%A, %B %d, %Y")
+    
     messages = [
-        SystemMessage(content=PLANNER_SYSTEM),
+        SystemMessage(content=f"{PLANNER_SYSTEM}\n\nCURRENT SYSTEM DATE: {current_time}"),
         HumanMessage(content=plan_prompt),
     ]
     response = _llm.invoke(messages)
@@ -83,8 +86,13 @@ def researcher_node(state: ResearchState) -> dict:
         total_steps=len(plan),
         current_step=current_step
     )
+    
+    from datetime import datetime
+    current_time = datetime.now().strftime("%A, %B %d, %Y")
+    sys_msg = SystemMessage(content=f"CURRENT SYSTEM DATE: {current_time}. IMPORTANT: Always use this date as your reference for 'today', 'latest news', or current events.")
+
     # recursion_limit=4 prevents runaway tool-calling loops
-    result = agent.invoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
+    result = agent.invoke({"messages": [sys_msg, HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
     finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
     print(f"[Deep Research Agent] Step {step_idx + 1} completed.", flush=True)
 

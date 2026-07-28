@@ -306,8 +306,11 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
         yield {"type": "status", "message": "Searching web..."}
         async def _fetch_web() -> str:
             agent = create_react_agent(_llm, [tavily_tool])
+            from datetime import datetime
+            current_time = datetime.now().strftime("%A, %B %d, %Y")
+            sys_msg = SystemMessage(content=f"CURRENT SYSTEM DATE: {current_time}. IMPORTANT: Always use this date as your reference for 'today', 'latest news', or current events.")
             prompt = f"Search for: {standalone_query}"
-            res = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
+            res = await agent.ainvoke({"messages": [sys_msg, HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
             return res["messages"][-1].content
         try:
             state["web_results"] = await _fetch_web()

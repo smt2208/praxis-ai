@@ -106,6 +106,8 @@ async def chat_stream(
 
     await save_message(pool, body.conversation_id, "user", body.message)
 
+    user_tz = request.headers.get("x-user-timezone")
+
     async def event_generator():
         full_answer = []
 
@@ -116,6 +118,7 @@ async def chat_stream(
                 user_id=current_user["id"],
                 conversation_id=body.conversation_id,
                 has_documents=has_documents,
+                user_tz=user_tz,
             ):
                 if await request.is_disconnected():
                     break

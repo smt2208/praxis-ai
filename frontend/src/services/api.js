@@ -8,9 +8,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ?
 async function request(endpoint, options = {}) {
   const accessToken = localStorage.getItem('access_token');
 
-  const headers = {
-    ...options.headers,
-  };
+  const headers = { ...options.headers };
+
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) headers['X-User-Timezone'] = tz;
+  } catch (e) {}
 
   if (accessToken && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${accessToken}`;
@@ -141,6 +144,10 @@ export const api = {
     const headers = {
       'Content-Type': 'application/json',
     };
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz) headers['X-User-Timezone'] = tz;
+    } catch (e) {}
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }

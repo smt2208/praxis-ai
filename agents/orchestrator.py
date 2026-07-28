@@ -198,7 +198,7 @@ def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id:
     }
 
 
-async def astream_graph_events(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool):
+async def astream_graph_events(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool, user_tz: str = None):
     """
     Async generator for SSE streaming.
     Yields dicts with {"event": ..., "data": ...}
@@ -220,10 +220,11 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
     yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}
 
     doc_context = (
-        "IMPORTANT: The user HAS uploaded documents to this conversation. "
-        "If their question could relate to the uploaded documents, route to knowledge_team."
+        "CONTEXT: The user has attached document(s) to this chat session. "
+        "Route to `knowledge_team` ONLY IF the user's question asks about, summarizes, or references the contents of the uploaded files. "
+        "For general questions, news, coding, math, or web search queries that do NOT depend on the uploaded files, route to `general` or `research_team`."
         if has_documents
-        else "The user has NOT uploaded any documents to this conversation. Do NOT route to knowledge_team."
+        else "CONTEXT: No documents are attached to this conversation. Do NOT route to `knowledge_team`."
     )
     history_text = "\n".join(f"{m.type.upper()}: {m.content}" for m in messages)
     routing_messages = [
@@ -250,7 +251,7 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
 
     # Step 2: Department execution & token streaming
     if route == "general":
-        async for token in astream_general_agent(query, messages):
+        async for token in astream_general_agent(query, messages, user_tz=user_tz):
             yield {"event": "token", "data": {"agent": "general", "content": token}}
     elif route == "follow_up":
         followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + messages + [HumanMessage(content=query)]

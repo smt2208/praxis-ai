@@ -22,6 +22,21 @@ os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 tavily_tool = TavilySearchResults(max_results=5, topic="general")
 
 
+def get_current_time_str(user_tz: str = None) -> str:
+    """Format current date and time localized to user's timezone if provided."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    if user_tz:
+        try:
+            tz = ZoneInfo(user_tz)
+            now = datetime.now(tz)
+            return f"{now.strftime('%A, %B %d, %Y %H:%M:%S')} ({user_tz} Time)"
+        except Exception:
+            pass
+    now = datetime.now()
+    return f"{now.strftime('%A, %B %d, %Y %H:%M:%S')}"
+
+
 # --- Arxiv (academic papers) -------------------------------------------
 def _search_arxiv(query: str) -> str:
     """Search arXiv academic papers safely across different SDK versions."""
