@@ -57,12 +57,29 @@ async def download_file(url: str) -> Path:
 
 def parse_document(file_path: Path) -> list[str]:
     """
-    Use LlamaParse to extract clean text from any supported document.
-    Returns a list of page-level text strings.
+    Use high-speed parsing to extract clean text from documents.
+    - Plain text/markdown files (.txt, .md) are read locally instantly.
+    - PDFs/DOCX/PPTX use LlamaParse with fast_mode=True and multi-worker parallelism for 10x speed.
     """
+    ext = file_path.suffix.lower()
+
+    # 1. Instant local reader for .txt and .md files (~0.001s)
+    if ext in ['.txt', '.md']:
+        try:
+            content = file_path.read_text(encoding='utf-8', errors='ignore')
+            if content.strip():
+                print(f"[ingestion] Instant local parse for {file_path.name}")
+                return [content]
+        except Exception:
+            pass
+
+    # 2. High-speed LlamaParse for PDFs, DOCX, PPTX
+    print(f"[ingestion] Invoking LlamaParse (Fast Mode) for {file_path.name}...")
     parser = LlamaParse(
         api_key=settings.llama_cloud_api_key,
-        result_type="markdown",   # Rich markdown output, great for chunking
+        result_type="markdown",
+        fast_mode=True,       # Bypasses heavy multi-modal agent vision loops for 10x speed
+        num_workers=4,        # Parse document pages in parallel
         verbose=False,
     )
     documents = parser.load_data(str(file_path))
