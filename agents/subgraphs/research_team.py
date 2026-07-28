@@ -184,7 +184,7 @@ async def astream_research_team(query: str, history: list = None):
     }
 
     # Step 1: Planning
-    yield {"type": "status", "message": "Formulating research plan..."}
+    yield {"type": "status", "message": "Researching..."}
     plan_delta = await asyncio.to_thread(planner_node, state)
     state.update(plan_delta)
 
@@ -193,14 +193,13 @@ async def astream_research_team(query: str, history: list = None):
 
     # Step 2: Multi-step Research Execution
     for i in range(total_steps):
-        step_title = plan[i] if i < len(plan) else query
-        yield {"type": "status", "message": f"Researching step {i + 1}/{total_steps}: {step_title[:50]}..."}
+        yield {"type": "status", "message": "Researching..."}
         research_delta = await asyncio.to_thread(researcher_node, state)
         state["findings"].extend(research_delta.get("findings", []))
         state["iteration"] = research_delta.get("iteration", i + 1)
 
     # Step 3: Synthesis & Live Token Streaming
-    yield {"type": "status", "message": "Synthesizing deep research report..."}
+    yield {"type": "status", "message": "Synthesizing..."}
 
     findings_text = "\n\n".join(state["findings"])
     messages = [

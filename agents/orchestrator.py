@@ -217,7 +217,7 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
             messages.append(AIMessage(content=msg["content"]))
 
     # Step 1: CEO Router
-    yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Analyzing query intent..."}}
+    yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}
 
     doc_context = (
         "IMPORTANT: The user HAS uploaded documents to this conversation. "
@@ -238,7 +238,15 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
     if route == "knowledge_team" and not has_documents:
         route = "general"
 
-    yield {"event": "agent_start", "data": {"agent": route, "message": f"Routed to {route}"}}
+    status_msg = "Thinking..."
+    if route == "knowledge_team":
+        status_msg = "Searching documents..."
+    elif route == "research_team":
+        status_msg = "Researching..."
+    elif route == "general":
+        status_msg = "Searching web..."
+
+    yield {"event": "agent_start", "data": {"agent": route, "message": status_msg}}
 
     # Step 2: Department execution & token streaming
     if route == "general":

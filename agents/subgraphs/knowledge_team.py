@@ -267,7 +267,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
     history_summary = _format_history(history)
 
     # Step 1: Conversational Query Rewriting
-    yield {"type": "status", "message": "Refining search query context..."}
+    yield {"type": "status", "message": "Analyzing query..."}
     standalone_query = await asyncio.to_thread(rewrite_query, query, history_summary)
 
     # Initialize KnowledgeState object
@@ -284,7 +284,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
     }
 
     # Step 2: Document Vector Retrieval (Qdrant)
-    yield {"type": "status", "message": f"Searching documents for '{standalone_query[:40]}'..."}
+    yield {"type": "status", "message": "Searching documents..."}
     from agents.tools import build_hybrid_retriever
     rag_tool = build_hybrid_retriever(user_id=user_id, conversation_id=conversation_id)
 
@@ -299,11 +299,11 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
         state["rag_results"] = f"Document retrieval error: {str(e)}"
 
     # Step 3: Adaptive Web Search Gating
-    yield {"type": "status", "message": "Evaluating document context completeness..."}
+    yield {"type": "status", "message": "Thinking..."}
     is_sufficient = await asyncio.to_thread(evaluate_doc_context, standalone_query, state["rag_results"])
 
     if not is_sufficient:
-        yield {"type": "status", "message": "Supplementing with external web facts..."}
+        yield {"type": "status", "message": "Searching web..."}
         async def _fetch_web() -> str:
             agent = create_react_agent(_llm, [tavily_tool])
             prompt = f"Search for: {standalone_query}"
@@ -315,7 +315,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
             state["web_results"] = ""
 
     # Step 4: Grounded Synthesis & Live Token Streaming
-    yield {"type": "status", "message": "Synthesizing answer with document citations..."}
+    yield {"type": "status", "message": "Thinking..."}
 
     system = SYNTHESIZER_SYSTEM
     human_content = SYNTHESIZER_HUMAN.format(
