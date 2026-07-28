@@ -60,7 +60,8 @@ async def chat(
             has_documents=has_documents,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        print(f"[Chat Exception] {str(e)}", flush=True)
+        raise HTTPException(status_code=500, detail="An error occurred while processing your request. Please try again.")
 
     # 3. Persist the assistant reply after generation succeeds
     await save_message(pool, body.conversation_id, "assistant", result["answer"])
@@ -144,7 +145,8 @@ async def chat_stream(
                 asyncio.create_task(_auto_generate_title(pool, body.conversation_id, body.message))
 
         except Exception as err:
-            yield f"event: error\ndata: {json.dumps({'message': str(err)})}\n\n"
+            print(f"[Chat Stream Exception] {str(err)}", flush=True)
+            yield f"event: error\ndata: {json.dumps({'message': 'An error occurred while processing your request. Please try again.'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

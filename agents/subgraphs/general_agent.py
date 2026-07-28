@@ -14,7 +14,7 @@ Design: A single ReAct agent that decides for itself whether to
 search the web or answer from its own knowledge. Simple and fast.
 """
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.tools import tavily_tool
 from prompts.general_prompts import GENERAL_SYSTEM
