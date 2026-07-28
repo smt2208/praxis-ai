@@ -24,6 +24,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
+from langsmith import traceable
+
 from agents.tools import tavily_tool
 from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN, CRITIC_SYSTEM
 
@@ -177,6 +179,7 @@ knowledge_graph = _build_knowledge_graph()
 
 # --- Enterprise RAG Helpers ----------------------------------------------
 
+@traceable(name="Rewrite Query", run_type="chain")
 def rewrite_query(query: str, history_summary: str = "") -> str:
     """Rewrite raw user query into an explicit, standalone vector search query."""
     if not history_summary:
@@ -203,6 +206,7 @@ class EvaluationResult(BaseModel):
 _evaluator_llm = _llm.with_structured_output(EvaluationResult)
 
 
+@traceable(name="Evaluate Doc Context", run_type="chain")
 def evaluate_doc_context(query: str, rag_results: str) -> bool:
     """Determine if retrieved document context is sufficient to answer the query."""
     if not rag_results or len(rag_results.strip()) < 20:
@@ -238,6 +242,7 @@ def _format_history(history: list) -> str:
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
+@traceable(name="Knowledge Team Run", run_type="chain")
 def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None) -> str:
     """Entry point for synchronous graph invocation."""
     history_summary = _format_history(history)
@@ -258,6 +263,7 @@ def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: 
     return result["final_answer"]
 
 
+@traceable(name="Knowledge Team Stream", run_type="chain")
 async def astream_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None):
     """
     Enterprise RAG Async generator yielding progress events and streaming synthesizer tokens in real-time.

@@ -16,6 +16,8 @@ search the web or answer from its own knowledge. Simple and fast.
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from langsmith import traceable
+
 from agents.tools import tavily_tool
 from prompts.general_prompts import GENERAL_SYSTEM
 
@@ -41,6 +43,7 @@ _general_agent = _build_general_agent()
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
+@traceable(name="General Agent Run", run_type="chain")
 def run_general_agent(query: str, history: list, user_tz: str = None) -> str:
     """
     Entry point for the parent CEO graph.
@@ -62,6 +65,7 @@ def run_general_agent(query: str, history: list, user_tz: str = None) -> str:
     return result["messages"][-1].content
 
 
+@traceable(name="General Agent Stream", run_type="chain")
 async def astream_general_agent(query: str, history: list, user_tz: str = None):
     """Async generator yielding LLM token strings in real-time."""
     from agents.tools import get_current_time_str

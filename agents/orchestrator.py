@@ -12,6 +12,8 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 
+from langsmith import traceable
+
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
@@ -165,8 +167,11 @@ main_graph = _build_main_graph()
 
 # --- Public invoke function -------------------------------------------
 
+@traceable(name="Orchestrator Graph Run", run_type="chain")
 def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool) -> dict:
     """
+    Entry point for the FastAPI router (synchronous invocation).
+
     history        : list of {"role": "user"|"assistant", "content": "..."} dicts
     user_id        : UUID string from the decoded JWT — used for per-user doc isolation
     conversation_id: UUID string representing the active chat thread
@@ -198,6 +203,7 @@ def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id:
     }
 
 
+@traceable(name="Orchestrator SSE Stream", run_type="chain")
 async def astream_graph_events(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool, user_tz: str = None):
     """
     Async generator for SSE streaming.

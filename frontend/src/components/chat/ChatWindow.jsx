@@ -187,7 +187,9 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       }
     } catch (err) {
       const msg = err.message || '';
-      if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
+      if (msg.includes('409') || msg.toLowerCase().includes('already been uploaded')) {
+        setError(`'${file.name}' is already in this conversation. Try a different conversation or rename the file.`);
+      } else if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
         setError('File is too large. Please upload a smaller document (max ~10 MB).');
       } else if (msg.includes('500')) {
         setError('The server could not process this file. Try a different format (PDF, DOCX, TXT).');

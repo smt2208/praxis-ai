@@ -13,6 +13,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
 
+from langsmith import traceable
+
 from agents.tools import tavily_tool, arxiv_tool, wikipedia_tool, pubmed_tool
 from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
 
@@ -39,6 +41,7 @@ _llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
 
 # --- Node: Planner -----------------------------------------------------
 
+@traceable(name="Research Planner Node", run_type="chain")
 def planner_node(state: ResearchState) -> dict:
     """Break the query into a numbered research checklist."""
     plan_prompt = state["query"]
@@ -64,6 +67,7 @@ def planner_node(state: ResearchState) -> dict:
 
 # --- Node: Researcher --------------------------------------------------
 
+@traceable(name="Researcher Node", run_type="chain")
 def researcher_node(state: ResearchState) -> dict:
     """
     Pick the next un-researched step and search for it.
@@ -115,6 +119,7 @@ def should_continue(state: ResearchState) -> str:
 
 # --- Node: Reporter ----------------------------------------------------
 
+@traceable(name="Reporter Node", run_type="chain")
 def reporter_node(state: ResearchState) -> dict:
     """Synthesize all findings into a final, well-structured report."""
     findings_text = "\n\n".join(state["findings"])
@@ -150,6 +155,7 @@ research_graph = _build_research_graph()
 
 # --- Wrapper (called by parent graph) ----------------------------------
 
+@traceable(name="Research Team Run", run_type="chain")
 def run_research_team(query: str, history: list = None) -> str:
     """
     Entry point for the parent CEO graph.
@@ -170,6 +176,7 @@ def run_research_team(query: str, history: list = None) -> str:
     return result["final_report"]
 
 
+@traceable(name="Research Team Stream", run_type="chain")
 async def astream_research_team(query: str, history: list = None):
     """
     Async generator yielding step-by-step progress events and streaming report tokens.

@@ -291,6 +291,26 @@ async def update_conversation_title(pool: asyncpg.Pool, conversation_id: str, ti
     )
 
 
+async def check_document_exists(pool: asyncpg.Pool, conversation_id: str, filename: str) -> bool:
+    """
+    Return True if a document with the same filename (case-insensitive) has already
+    been ingested into this specific conversation.
+
+    Scope: per-conversation only — the same filename in a different conversation
+    (even by the same user) is a completely independent upload and is allowed.
+    """
+    row = await pool.fetchrow(
+        """
+        SELECT id FROM conversation_documents
+        WHERE conversation_id = $1
+          AND LOWER(filename) = LOWER($2)
+        LIMIT 1
+        """,
+        conversation_id, filename,
+    )
+    return row is not None
+
+
 async def add_conversation_document(pool: asyncpg.Pool, conversation_id: str, filename: str) -> None:
     """Record an ingested document for a conversation."""
     await pool.execute(

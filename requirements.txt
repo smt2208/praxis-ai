@@ -19,6 +19,7 @@ langchain-community>=0.3.0
 langchain-qdrant>=0.2.0
 langchain-tavily>=0.1.0
 langchain-text-splitters>=0.3.0
+langsmith>=0.1.0
 
 # LangGraph
 langgraph>=0.3.0

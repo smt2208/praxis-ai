@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import mark_conversation_has_documents, add_conversation_document, verify_conversation_ownership
+from app.database import (
+    mark_conversation_has_documents,
+    add_conversation_document,
+    verify_conversation_ownership,
+    check_document_exists,
+)
 from app.schemas import IngestRequest, IngestResponse
 from scripts.ingestion import ingest_document
 
@@ -28,13 +33,21 @@ async def ingest(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
+    filename = body.source_url.split("/")[-1].split("?")[0] or "document"
+
+    # Reject duplicate: same filename already ingested in this conversation
+    if await check_document_exists(pool, body.conversation_id, filename):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{filename}' has already been uploaded to this conversation. Upload it to a different conversation or rename the file.",
+        )
+
     try:
         count = await ingest_document(
             source_url=body.source_url,
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
         )
-        filename = body.source_url.split("/")[-1].split("?")[0] or "document"
         await mark_conversation_has_documents(pool, body.conversation_id)
         await add_conversation_document(pool, body.conversation_id, filename)
     except Exception as e:
@@ -64,6 +77,16 @@ async def ingest_file(
     if ext.lower() not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
 
+    filename = file.filename or "uploaded_file"
+
+    # Reject duplicate: same filename already ingested in this conversation.
+    # A file with a different extension is treated as a distinct document and is allowed.
+    if await check_document_exists(pool, conversation_id, filename):
+        raise HTTPException(
+            status_code=409,
+            detail=f"'{filename}' has already been uploaded to this conversation. Upload it to a different conversation or rename the file.",
+        )
+
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large. Maximum upload size is 20 MB.")
@@ -78,7 +101,6 @@ async def ingest_file(
             user_id=current_user["id"],
             conversation_id=conversation_id,
         )
-        filename = file.filename or "uploaded_file"
         await mark_conversation_has_documents(pool, conversation_id)
         await add_conversation_document(pool, conversation_id, filename)
     except Exception as e:

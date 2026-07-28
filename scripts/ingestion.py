@@ -18,6 +18,7 @@ import asyncio
 from pathlib import Path
 
 import httpx
+from langsmith import traceable
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
@@ -135,6 +136,7 @@ def _llamaparse_extract(file_path: Path) -> list[str]:
 
 # --- Step 2: Unified parse dispatcher ----------------------------------
 
+@traceable(name="Parse Document", run_type="parser")
 def parse_document(file_path: Path) -> list[str]:
     """
     Smart two-path parser:
@@ -153,6 +155,7 @@ def parse_document(file_path: Path) -> list[str]:
 
 # --- Step 3: Chunk text -----------------------------------------------
 
+@traceable(name="Chunk Texts", run_type="chain")
 def chunk_texts(pages: list[str], source: str, user_id: str, conversation_id: str) -> list[Document]:
     """
     Split page texts into overlapping chunks.
@@ -176,6 +179,7 @@ def chunk_texts(pages: list[str], source: str, user_id: str, conversation_id: st
 
 # --- Step 4 + 5: Embed and upsert to Qdrant --------------------------
 
+@traceable(name="Store Vector Documents", run_type="retriever")
 def store_documents(docs: list[Document], collection_name: str) -> int:
     """
     Generate hybrid embeddings and upsert into Qdrant.
@@ -201,6 +205,7 @@ def store_documents(docs: list[Document], collection_name: str) -> int:
 
 # --- Main pipeline entrypoint -----------------------------------------
 
+@traceable(name="Ingest Document Pipeline", run_type="chain")
 async def ingest_document(
     source_url: str,
     user_id: str,

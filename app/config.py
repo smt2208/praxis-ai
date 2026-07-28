@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_anon_key: str = ""
 
+    # LangSmith Tracing (optional)
+    langchain_tracing_v2: str = "true"
+    langchain_api_key: str = ""
+    langchain_project: str = "praxis-ai"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

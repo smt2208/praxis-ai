@@ -17,6 +17,11 @@ settings = get_settings()
 os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 
+if settings.langchain_api_key:
+    os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2 or "true"
+    os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project or "praxis-ai"
+
 
 # --- Tavily (general web + news) ----------------------------------------
 tavily_tool = TavilySearchResults(max_results=5, topic="general")
@@ -156,13 +161,38 @@ pubmed_tool = Tool(
 
 # --- Qdrant Hybrid Retriever (per-user) --------------------------------
 
+# Query intents that need the ENTIRE document, not just top-k similar chunks.
+# Vector search fails for these because "summarize" has no semantically similar chunks.
+_GLOBAL_INTENT_KEYWORDS = {
+    "summarize", "summary", "summarise", "summarisation", "summarization",
+    "overview", "brief", "explain the document", "explain the file", "explain this",
+    "what is this document", "what is this file", "what does this document",
+    "key points", "key takeaways", "takeaways", "highlights", "main points",
+    "what is in the pdf", "what is in the file", "entire document", "whole document",
+    "all sections", "table of contents", "introduction", "conclusion",
+    "structure of", "outline of",
+}
+
+
+def _is_global_query(query: str) -> bool:
+    """Return True if the query requires the full document rather than targeted chunks."""
+    q = query.lower()
+    return any(kw in q for kw in _GLOBAL_INTENT_KEYWORDS)
+
+
 def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
     """
     Build a Qdrant hybrid retriever filtered to a specific conversation's documents.
 
-    The filter is applied at the Qdrant level (not post-processing),
-    so only chunks where metadata.conversation_id == conversation_id are ever returned.
-    We also require user_id as an extra security layer.
+    Two-mode retrieval strategy:
+    - GLOBAL queries (summarize, overview, key points, etc.):
+        Scroll ALL chunks belonging to this conversation → gives full-doc context.
+    - SPECIFIC queries (targeted questions about facts, dates, names, etc.):
+        Hybrid vector search (dense + sparse) top-10 → fast and precise.
+
+    The filter is applied at the Qdrant level, so only chunks where
+    metadata.conversation_id == conversation_id are ever returned.
+    user_id is required as an additional security layer.
     """
     from langchain_qdrant import FastEmbedSparse
     from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -199,9 +229,11 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             vector_name="dense",
             sparse_vector_name="sparse",
         )
+        # Specific-query retriever — top-10 hybrid matches
         retriever = vector_store.as_retriever(
-            search_kwargs={"k": 5, "filter": user_filter}
+            search_kwargs={"k": 10, "filter": user_filter}
         )
+        qdrant_client = vector_store.client
     except Exception as exc:
         error_text = str(exc)
 
@@ -217,23 +249,64 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             description="Search your private documents. Input should be a search query string.",
         )
 
-    def _run_retriever(query: str) -> str:
-        docs = retriever.invoke(query)
-        
-        # Smart Summarization Fallback: If user asks for summary/overview and specific query yields sparse results,
-        # fallback to pulling broad structural chunks (e.g. introduction, main findings, page 1-3).
-        summary_keywords = ["summarize", "summary", "overview", "key points", "main findings", "about", "explain the doc"]
-        if (not docs or len(docs) < 2) and any(k in query.lower() for k in summary_keywords):
-            fallback_docs = retriever.invoke("introduction overview main points summary conclusion section 1")
-            if fallback_docs:
-                docs = fallback_docs
+    def _fetch_all_chunks() -> list:
+        """
+        Scroll ALL chunks for this conversation from Qdrant.
+        Used for global queries (summarize, overview, etc.) where we need
+        full-document context — vector similarity search is the wrong tool here.
+        Chunks are sorted by page number to preserve reading order.
+        """
+        all_chunks = []
+        offset = None
+        while True:
+            results, offset = qdrant_client.scroll(
+                collection_name=settings.qdrant_collection_name,
+                scroll_filter=user_filter,
+                limit=100,          # batch size per Qdrant scroll request
+                offset=offset,
+                with_payload=True,
+                with_vectors=False, # text only — no need to decode vectors
+            )
+            all_chunks.extend(results)
+            if offset is None:
+                break               # Qdrant returns None offset when no more pages
+        return all_chunks
 
-        if not docs:
-            return "No relevant documents found in your knowledge base."
-        return "\n\n---\n\n".join(
-            f"Source: {d.metadata.get('source', 'unknown')} (page {d.metadata.get('page', '?')})\n{d.page_content}"
-            for d in docs
-        )
+    def _run_retriever(query: str) -> str:
+        if _is_global_query(query):
+            # --- FULL DOCUMENT MODE ---
+            # Fetch every chunk stored for this conversation and sort by page order.
+            raw_chunks = _fetch_all_chunks()
+            if not raw_chunks:
+                return "No documents found in your knowledge base for this conversation."
+
+            # Sort by page number (ascending) to preserve reading order
+            raw_chunks.sort(key=lambda p: (
+                p.payload.get("metadata", {}).get("page", p.payload.get("page", 0))
+            ))
+
+            parts = []
+            for point in raw_chunks:
+                payload = point.payload
+                meta = payload.get("metadata", payload)  # handles both flat and nested
+                source = meta.get("source", "unknown").split("/")[-1].split("\\")[-1]
+                page = meta.get("page", "?")
+                text = payload.get("page_content", "")
+                if text.strip():
+                    parts.append(f"[Source: {source} | Page {page}]\n{text}")
+
+            return "\n\n---\n\n".join(parts)
+
+        else:
+            # --- TARGETED SEARCH MODE ---
+            # Hybrid vector search for specific factual questions.
+            docs = retriever.invoke(query)
+            if not docs:
+                return "No relevant documents found in your knowledge base."
+            return "\n\n---\n\n".join(
+                f"Source: {d.metadata.get('source', 'unknown')} (page {d.metadata.get('page', '?')})\n{d.page_content}"
+                for d in docs
+            )
 
     return Tool(
         name="knowledge_base_search",
