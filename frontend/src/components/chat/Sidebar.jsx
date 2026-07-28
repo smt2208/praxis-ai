@@ -92,25 +92,15 @@ export const Sidebar = ({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            className="btn btn-secondary"
-            style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }}
-            onClick={() => logout(false)}
-            title="Log out current session"
-          >
-            <LogOut size={16} />
-            <span>Sign Out</span>
-          </button>
-          <button
-            className="btn btn-danger"
-            style={{ padding: '8px', fontSize: '0.8rem' }}
-            onClick={() => logout(true)}
-            title="Log out ALL devices"
-          >
-            <ShieldAlert size={16} />
-          </button>
-        </div>
+        <button
+          className="btn btn-secondary"
+          style={{ width: '100%', padding: '9px', fontSize: '0.85rem' }}
+          onClick={() => logout(false)}
+          title="Sign Out"
+        >
+          <LogOut size={16} />
+          <span>Sign Out</span>
+        </button>
       </div>
     </aside>
     </>

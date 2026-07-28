@@ -1,67 +1,136 @@
 # Praxis 🧠
 
-**Praxis** is a robust, stateless, hierarchical Multi-Agent API built for complex reasoning and enterprise-scale task execution. Instead of relying on a single monolithic prompt, Praxis operates like a digital corporation: a top-level **CEO Orchestrator** analyzes user requests and dynamically routes them to specialized AI sub-teams (e.g., Knowledge Team or Research Team) for precise, cost-effective, and hallucination-resistant responses.
+**Praxis** is a state-of-the-art, hierarchical Multi-Agent AI Platform with real-time **Server-Sent Events (SSE) streaming**, **Enterprise Document RAG**, and **Deep Multi-Domain Research**.
+
+Operating like a digital corporation, a top-level **CEO Orchestrator** analyzes user intent and dynamically routes queries to specialized AI departments (**Enterprise Knowledge Team**, **Deep Research Team**, **General Agent**, or **Conversational Follow-Up Agent**) for precise, hallucination-resistant responses.
 
 ---
 
-## 🏗 Architecture
+## 🏗 Architecture & Flow
 
-The system utilizes a fully stateless design via `langgraph`, meaning conversational memory is persisted in a PostgreSQL database and injected per-request, enabling infinite horizontal scaling across cloud instances.
+The backend utilizes a fully stateless `langgraph` execution model. Conversation state is persisted in **PostgreSQL** and injected per-request, enabling horizontal auto-scaling and zero session affinity requirements.
 
 ```mermaid
-graph TD
-    %% Visual Styles
-    classDef client fill:#d4edda,stroke:#28a745,stroke-width:2px,color:#155724;
-    classDef api fill:#cce5ff,stroke:#007bff,stroke-width:2px,color:#004085;
-    classDef agent fill:#fff3cd,stroke:#ffc107,stroke-width:2px,color:#856404;
-    classDef db fill:#e2e3e5,stroke:#383d41,stroke-width:2px,color:#383d41;
+flowchart TD
+    %% Visual Styling
+    classDef client fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef api fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef agent fill:#31104b,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef db fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
 
     %% Components
-    User([👤 User Client]):::client
-    API[⚡ FastAPI Backend & JWT Middleware]:::api
-    DB[(🐘 RDS PostgreSQL)]:::db
-    Qdrant[(💠 Qdrant Hybrid DB)]:::db
-    Web((🌐 Web / ArXiv)):::db
-    
-    subgraph LangGraph [🤖 Hierarchical Multi-Agent Platform]
-        CEO{🧠 CEO Orchestrator}:::agent
-        Knowledge[📚 Knowledge Team]:::agent
-        Research[🔬 Research Team]:::agent
-        FollowUp[💬 Follow-up Agent]:::agent
+    User[👤 React 18 Client Frontend]:::client
+    API[⚡ FastAPI Backend - SSE Stream /chat/stream]:::api
+    DB[(🐘 PostgreSQL Database)]:::db
+    Qdrant[(💠 Qdrant Hybrid Vector Store)]:::db
+    Tools[(🌐 Tavily / ArXiv / PubMed / Wikipedia)]:::db
+
+    subgraph Orchestrator [🧠 LangGraph Multi-Agent Engine]
+        CEO{CEO Router}:::agent
+        Knowledge[📚 Knowledge Team - Enterprise RAG]:::agent
+        Research[🔬 Deep Research Team]:::agent
+        General[🌐 General Web Agent]:::agent
+        FollowUp[💬 Conversational Agent]:::agent
     end
 
-    %% Flow
-    User -- 1. Auth & Request (Bearer JWT) --> API
-    API <-- 2. Validate Token & Load History --> DB
+    %% Workflow
+    User -- "1. Auth & Message (Bearer JWT)" --> API
+    API -- "2. Fetch History & Verify Ownership" --> DB
+    API -- "3. Stream Events (SSE)" --> CEO
     
-    API -- 3. Execute Graph --> CEO
-    
-    CEO -- "RAG/News" --> Knowledge
-    CEO -- "Literature" --> Research
-    CEO -- "Casual" --> FollowUp
-    
-    Knowledge -.->|4a. Hybrid Search| Qdrant
-    Research -.->|4b. Iterative Search| Web
-    
-    Knowledge -- 5. Synthesize --> API
-    Research -- 5. Report --> API
-    FollowUp -- 5. Chat --> API
-    
-    API -- 6. Save State & Return JSON --> User
+    CEO -- "Document Query" --> Knowledge
+    CEO -- "Literature / Deep Study" --> Research
+    CEO -- "General / News" --> General
+    CEO -- "Follow-up" --> FollowUp
+
+    Knowledge -.->|4a. De-contextualize & Hybrid RAG| Qdrant
+    Research -.->|4b. Multi-step Research Loop| Tools
+    General -.->|4c. Real-time Search| Tools
+
+    Knowledge -- "5. Stream Tokens & Citations" --> API
+    Research -- "5. Stream Research Report" --> API
+    General -- "5. Stream Answer" --> API
+    FollowUp -- "5. Stream Response" --> API
+
+    API -- "6. Persist Assistant Reply & Return SSE" --> User
 ```
 
 ---
 
 ## ✨ Key Features
 
-- **Stateless Execution:** Conversation history is fetched from AWS RDS PostgreSQL and injected per-request, preventing memory bloat and enabling horizontal auto-scaling.
-- **Hierarchical Multi-Agent Architecture:** Powered by `langgraph` to isolate execution context between sub-teams (Knowledge vs. Research), reducing token usage and eliminating prompt pollution.
-- **Secure JWT Authentication:** Built-in registration, login, token refresh, and device revocation using `HS256` signed Access & Refresh tokens.
-- **Rate Limiting & Protection:** Built-in endpoint throttling (`slowapi`) preventing API abuse (e.g., 20 msgs/min per user).
-- **Hybrid Document Retrieval:** Qdrant vector store combining dense (`text-embedding-3-small`) and sparse (`FastEmbedSparse BM25`) embeddings with strict metadata filtering per `user_id` and `conversation_id`.
-- **Dual Ingestion Pipeline:** Document parsing powered by `LlamaParse` via public URL (`/api/v1/ingest`) or direct file upload (`/api/v1/ingest/file`).
-- **Academic & Web Research:** Automated multi-step research loops combining web search (Tavily) and paper metadata extraction (`arxiv`).
-- **Docker & CI/CD Ready:** Includes container setup (`Dockerfile`), deployment automation (`deploy.sh`), and GitHub Actions workflow (`.github/workflows/deploy.yml`).
+- **Real-Time SSE Streaming (`/api/v1/chat/stream`):** Live token-by-token text streaming and animated step-by-step progress status updates (*"Refining query context..."* → *"Searching vector index..."* → *"Synthesizing response..."*).
+- **Enterprise Document RAG Pipeline:**
+  - **Conversational Query De-contextualization:** Resolves ambiguous pronouns (*"it"*, *"this"*, *"section 2"*) against chat history into explicit search queries before vector lookup.
+  - **Adaptive Web Search Gating:** Evaluates document context completeness first—skipping web search when internal documents contain complete information (50% speedup, zero web noise).
+  - **Grounded Citations:** Formats responses with explicit document source attributions (`[Source: document.pdf]`).
+- **Multi-Domain Deep Research Team:** Multi-step iterative research planner executing multi-query searches across **ArXiv** (CS/AI), **PubMed** (Biomedical), **Wikipedia**, and **Tavily Web Search**.
+- **Stateless Execution Model:** Stateless LangGraph architecture backed by PostgreSQL for infinite horizontal scaling across cloud instances.
+- **Security & Multi-Tenant Data Isolation:** JWT authentication (`HS256`), password hashing (`bcrypt`), endpoint rate-limiting (`slowapi`), 20 MB file upload limit, file type validation, and strict database conversation ownership verification.
+- **Modern Responsive UI:** Built with Vite + React 18, featuring brand logo identity, dark glassmorphism aesthetic, mobile off-canvas drawer sidebar, and fail-safe HTTP fallback.
+
+---
+
+## 📊 Database Schema
+
+Praxis uses **PostgreSQL** with `pgcrypto` for UUID generation. Below is the relational schema and operational purpose of each table:
+
+```mermaid
+erDiagram
+    users ||--o{ conversations : owns
+    users ||--o{ refresh_tokens : has
+    conversations ||--o{ messages : contains
+    conversations ||--o{ conversation_documents : includes
+
+    users {
+        uuid id PK
+        varchar email UK
+        text hashed_password
+        timestamp created_at
+    }
+
+    conversations {
+        uuid id PK
+        uuid user_id FK
+        varchar title
+        boolean has_documents
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    messages {
+        uuid id PK
+        uuid conversation_id FK
+        varchar role
+        text content
+        timestamp created_at
+    }
+
+    refresh_tokens {
+        uuid id PK
+        uuid user_id FK
+        text token UK
+        timestamp expires_at
+        timestamp created_at
+    }
+
+    conversation_documents {
+        uuid id PK
+        uuid conversation_id FK
+        varchar filename
+        timestamp created_at
+    }
+```
+
+### Table Operational Descriptions
+
+| Table Name | Primary Purpose | Key Columns & Operational Role |
+|---|---|---|
+| `users` | Stores registered user accounts | `id` (UUID PK), `email` (Unique), `hashed_password` (Bcrypt hash). Used for authentication and data ownership isolation. |
+| `conversations` | Manages chat threads | `id` (UUID PK), `user_id` (FK → users.id), `title` (auto-generated 3-5 word summary), `has_documents` (Boolean gate used by CEO router). |
+| `messages` | Persists conversation message history | `id` (UUID PK), `conversation_id` (FK → conversations.id), `role` (`user`, `assistant`, `system`), `content` (Markdown text). Injected per-request for stateless execution. |
+| `refresh_tokens` | Multi-session auth & token rotation | `id` (UUID PK), `user_id` (FK → users.id), `token` (64-char opaque secret), `expires_at` (7-day expiry). Enables instant session revocation. |
+| `conversation_documents` | Tracks ingested files attached to threads | `id` (UUID PK), `conversation_id` (FK → conversations.id), `filename` (Ingested PDF, DOCX, TXT file name). |
 
 ---
 
@@ -70,41 +139,46 @@ graph TD
 ```text
 praxis-ai/
 ├── app/
-│   ├── main.py             # FastAPI entry point, middleware & router inclusion
-│   ├── database.py         # PostgreSQL connection pool & query helpers
-│   ├── dependencies.py     # Shared database pool dependency
+│   ├── main.py             # FastAPI entry point, CORS & middleware
+│   ├── database.py         # PostgreSQL connection pool & DDL schema
+│   ├── dependencies.py     # Shared asyncpg pool dependency
 │   ├── schemas.py          # Pydantic request/response validation models
-│   ├── config.py           # Environment variables (pydantic-settings)
+│   ├── config.py           # Environment settings (pydantic-settings)
 │   ├── routers/            # Modular API Routers
-│   │   ├── chat.py         # Main /chat endpoint & auto-titling logic
-│   │   ├── conversations.py# /conversations endpoints
-│   │   ├── ingest.py       # URL & File ingestion endpoints
+│   │   ├── chat.py         # Sync (/chat) & SSE Streaming (/chat/stream) endpoints
+│   │   ├── conversations.py# Conversation history & document endpoints
+│   │   ├── ingest.py       # File upload & document ingestion router
 │   │   └── health.py       # System health check endpoint
 │   ├── auth/               # Authentication module
-│   │   ├── router.py       # Auth endpoints (/register, /login, /refresh, /me)
-│   │   ├── security.py     # Password hashing & JWT generation
-│   │   └── dependencies.py # JWT bearer token validation dependencies
+│   │   ├── router.py       # Auth endpoints (/register, /login, /refresh, /logout, /me)
+│   │   ├── security.py     # Password hashing (bcrypt) & JWT token lifecycle
+│   │   └── dependencies.py # JWT bearer token authorization dependency
 │   └── middleware/         # App middleware
 │       └── rate_limit.py   # Slowapi rate-limiting configuration
 ├── agents/
-│   ├── orchestrator.py     # CEO router node & LangGraph entry point
-│   ├── tools.py            # LangChain tool definitions (Tavily, arXiv, Qdrant)
+│   ├── orchestrator.py     # CEO router node & SSE event stream generator
+│   ├── tools.py            # Hybrid Qdrant retriever, Tavily, arXiv, PubMed tools
 │   └── subgraphs/
-│       ├── knowledge_team.py # RAG + Web search synthesizer team
-│       └── research_team.py  # Multi-step academic research team
+│       ├── knowledge_team.py # Enterprise RAG pipeline (De-contextualization, Gated Web, Citations)
+│       ├── research_team.py  # Deep multi-step academic research team
+│       └── general_agent.py  # ReAct web search agent
 ├── prompts/
 │   ├── orchestrator_prompts.py
 │   ├── knowledge_prompts.py
-│   └── research_prompts.py
-├── scripts/
-│   └── ingestion.py        # LlamaParse + Qdrant hybrid ingestion pipeline
-├── .github/
-│   └── workflows/
-│       └── deploy.yml      # CI/CD deployment pipeline to AWS EC2
-├── Dockerfile              # Docker container definition
+│   ├── research_prompts.py
+│   └── general_prompts.py
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # React components (ChatWindow, Sidebar, MessageItem, AuthModal)
+│   │   ├── context/        # AuthContext state provider with toast notifications
+│   │   ├── services/       # API client with SSE fetch stream reader
+│   │   └── styles/         # Glassmorphism dark theme CSS
+│   └── public/
+│       ├── logo.png        # Brand logo asset
+│       └── favicon.png     # Browser favicon
+├── Dockerfile              # Production Docker container definition
 ├── deploy.sh               # EC2 deployment automation script
-├── .env                    # Environment secrets
-└── requirements.txt        # Dependencies
+└── requirements.txt        # Backend python dependencies
 ```
 
 ---
@@ -112,63 +186,68 @@ praxis-ai/
 ## 🚀 Setup and Installation
 
 ### 1. Prerequisites
-- Python 3.10+ (or Conda)
-- AWS RDS (PostgreSQL) or local PostgreSQL instance
+- Python 3.10+
+- PostgreSQL instance (RDS or local)
 - Qdrant Cloud or local Qdrant instance
 - API Keys: OpenAI, Tavily, LlamaCloud
 
 ### 2. Install Dependencies
 ```bash
-conda create -n mgpt python=3.11
-conda activate mgpt
+# Backend dependencies
 pip install -r requirements.txt
+
+# Frontend dependencies
+cd frontend
+npm install
 ```
 
-### 3. Environment Variables
+### 3. Environment Variables (`.env`)
 Create a `.env` file in the root directory:
 ```env
 # API Server
 API_HOST=0.0.0.0
 API_PORT=8000
 
-# PostgreSQL
-POSTGRES_HOST=your-rds-endpoint.amazonaws.com
+# PostgreSQL Database
+POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_USER=praxis
-POSTGRES_PASSWORD="your_password_in_quotes_if_special_chars"
-POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=praxis
 
-# Qdrant
-QDRANT_URL=http://your-qdrant-ip:6333
+# Qdrant Vector Store
+QDRANT_URL=http://localhost:6333
 QDRANT_API_KEY=your_qdrant_api_key
-QDRANT_COLLECTION_NAME=collection
+QDRANT_COLLECTION_NAME=praxis_documents
 
 # API Keys
 OPENAI_API_KEY=sk-...
 TAVILY_API_KEY=tvly-...
 LLAMA_CLOUD_API_KEY=llx-...
 
-# JWT Auth Secret
+# Auth & Security
 SECRET_KEY=your_super_secret_jwt_key
 ```
 
-### 4. Run Locally
+### 4. Run Backend & Frontend
+
+**Backend**:
 ```bash
 python -m app.main
 ```
-*(Server will run on `http://localhost:8000`. Swagger API docs available at `http://localhost:8000/docs`).*
+*(Runs on `http://localhost:8000`. Swagger API docs at `http://localhost:8000/docs`).*
 
-### 5. Run via Docker
+**Frontend**:
 ```bash
-docker build -t praxis-backend .
-docker run -p 8000:8000 --env-file .env praxis-backend
+npm --prefix frontend run dev
 ```
+*(Runs on `http://localhost:5173`).*
 
 ---
 
 ## 📖 API Usage Guide
 
-### 1. Register & Obtain JWT Token
+### 1. Register & Obtain JWT Tokens
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
@@ -177,64 +256,15 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
     "password": "securepassword123"
   }'
 ```
-*Response:*
-```json
-{
-  "access_token": "<YOUR_ACCESS_TOKEN>",
-  "refresh_token": "<YOUR_REFRESH_TOKEN>",
-  "token_type": "bearer"
-}
-```
 
-### 2. Create a Conversation
+### 2. Stream Chat Responses in Real-Time (SSE)
 ```bash
-curl -X POST http://localhost:8000/api/v1/conversations \
-  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Research Session"}'
-```
-*Response:*
-```json
-{
-  "conversation_id": "<CONVERSATION_UUID>"
-}
-```
-
-### 3. Ingest a Document
-**Option A: Public URL or S3 link**
-```bash
-curl -X POST http://localhost:8000/api/v1/ingest \
-  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_url": "https://example.com/sample.pdf",
-    "conversation_id": "<CONVERSATION_UUID>"
-  }'
-```
-
-**Option B: Direct File Upload (Multipart Form)**
-```bash
-curl -X POST http://localhost:8000/api/v1/ingest/file \
-  -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
-  -F "file=@/path/to/local/file.pdf" \
-  -F "conversation_id=<CONVERSATION_UUID>"
-```
-
-### 4. Send a Chat Request
-```bash
-curl -X POST http://localhost:8000/api/v1/chat \
+curl -N -X POST http://localhost:8000/api/v1/chat/stream \
   -H "Authorization: Bearer <YOUR_ACCESS_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "conversation_id": "<CONVERSATION_UUID>",
-    "message": "Explain the architectural differences between Transformers and RNNs based on the literature."
+    "message": "Summarize the uploaded document's key conclusions."
   }'
 ```
-*Response:*
-```json
-{
-  "conversation_id": "<CONVERSATION_UUID>",
-  "answer": "...",
-  "route_taken": "research_team"
-}
-```
+*Output: Streams real-time `event: agent_start`, `event: token`, and `event: done` payloads.*
