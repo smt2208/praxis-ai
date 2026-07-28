@@ -3,10 +3,12 @@ ingestion.py
 
 Document ingestion pipeline:
   1. Download/load file from URL or path
-  2. Parse with LlamaParse (handles PDF, DOCX, PPTX, etc.)
+  2. Parse document — smart two-path strategy:
+       a. Fast local extraction (PyMuPDF / python-docx) — milliseconds, zero cost
+       b. LlamaParse cloud API with fast_mode=True — only when local fails
   3. Chunk text with LangChain splitter
   4. Generate hybrid embeddings (dense + sparse)
-  5. Upsert into Qdrant (create collection if it doesn't exist)
+  5. Upsert into Qdrant
 
 Called by the POST /api/v1/ingest endpoint.
 """
@@ -16,12 +18,10 @@ import asyncio
 from pathlib import Path
 
 import httpx
-from llama_parse import LlamaParse
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
-
 
 from app.config import get_settings
 
@@ -53,58 +53,102 @@ async def download_file(url: str) -> Path:
     return Path(tmp.name)
 
 
-# --- Step 2: Parse with LlamaParse ------------------------------------
+# --- Step 2a: Fast local extraction (no API call) ----------------------
 
-def parse_document(file_path: Path) -> list[str]:
+def _try_fast_local_extract(file_path: Path) -> list[str] | None:
     """
-    High-speed document parser:
-    1. Plain text/markdown files (.txt, .md) are read locally instantly (~0.001s).
-    2. PDFs/DOCX/PPTX use LlamaParse with automatic fallback protection.
+    Attempt zero-latency local text extraction for supported formats.
+    Returns a list of page-level strings, or None if local extraction is
+    not possible (e.g. scanned PDF with no embedded text, PPTX, etc.).
+
+    Why: LlamaParse makes a blocking cloud API call that takes 5-30 seconds.
+    For a plain-text PDF or DOCX with selectable text, local extraction
+    runs in milliseconds with no network round-trip.
     """
     ext = file_path.suffix.lower()
 
-    # 1. Instant local reader for .txt and .md files (~0.001s)
-    if ext in ['.txt', '.md']:
+    # Plain text / Markdown — trivially fast
+    if ext in (".txt", ".md"):
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+        return [text] if text.strip() else None
+
+    # PDF — use PyMuPDF (C-level, no network, extracts in <200ms)
+    if ext == ".pdf":
         try:
-            content = file_path.read_text(encoding='utf-8', errors='ignore')
-            if content.strip():
-                print(f"[ingestion] Instant local parse for {file_path.name}")
-                return [content]
-        except Exception as e:
-            print(f"[ingestion] Local text parse failed: {e}")
+            import pymupdf  # pip install pymupdf
+            doc = pymupdf.open(str(file_path))
+            pages = []
+            total_pages = doc.page_count
+            for page in doc:
+                text = page.get_text()
+                if text.strip():
+                    pages.append(text)
+            doc.close()
+            # If the PDF has selectable text on at least 60% of pages, use it.
+            # Otherwise it's likely a scanned image-PDF → fall through to LlamaParse.
+            if pages and (total_pages == 0 or len(pages) / total_pages >= 0.6):
+                return pages
+        except ImportError:
+            pass  # pymupdf not installed → fall through to LlamaParse
+        except Exception:
+            pass  # corrupt / encrypted → fall through to LlamaParse
 
-    # 2. Try LlamaParse (Fast Mode)
-    try:
-        print(f"[ingestion] Invoking LlamaParse (Fast Mode) for {file_path.name}...")
-        parser = LlamaParse(
-            api_key=settings.llama_cloud_api_key,
-            result_type="markdown",
-            fast_mode=True,
-            verbose=False,
-        )
-        documents = parser.load_data(str(file_path))
-        texts = [doc.text for doc in documents if doc.text and doc.text.strip()]
-        if texts:
-            return texts
-    except Exception as exc:
-        print(f"[ingestion] Fast LlamaParse attempt failed: {exc}. Retrying standard mode...", flush=True)
+    # DOCX — use python-docx (pure Python, no network)
+    if ext == ".docx":
+        try:
+            from docx import Document as DocxDocument
+            docx = DocxDocument(str(file_path))
+            full_text = "\n".join(p.text for p in docx.paragraphs if p.text.strip())
+            return [full_text] if full_text.strip() else None
+        except ImportError:
+            pass
+        except Exception:
+            pass
 
-    # 3. Fallback: Standard LlamaParse (guaranteed compatibility across all SDK versions)
-    try:
-        print(f"[ingestion] Invoking Standard LlamaParse for {file_path.name}...")
-        parser = LlamaParse(
-            api_key=settings.llama_cloud_api_key,
-            result_type="markdown",
-            verbose=False,
-        )
-        documents = parser.load_data(str(file_path))
-        texts = [doc.text for doc in documents if doc.text and doc.text.strip()]
-        if texts:
-            return texts
-        raise ValueError("LlamaParse returned no text content.")
-    except Exception as exc:
-        print(f"[ingestion] Standard LlamaParse failed: {exc}", flush=True)
-        raise ValueError(f"Document parsing error: {str(exc)}")
+    # PPTX and other complex formats → let LlamaParse handle them
+    return None
+
+
+# --- Step 2b: LlamaParse cloud extraction (fallback) -------------------
+
+def _llamaparse_extract(file_path: Path) -> list[str]:
+    """
+    Use LlamaParse with fast_mode=True to extract text from complex docs
+    (scanned PDFs, PPTX, multi-column layouts, tables, etc.).
+
+    fast_mode=True uses the lightweight 'Fast' tier:
+    - Skips heavy OCR / LLM-based layout reconstruction.
+    - Dramatically faster for text-based documents.
+    - Still handles tables and headings better than naive extraction.
+    """
+    from llama_parse import LlamaParse
+    parser = LlamaParse(
+        api_key=settings.llama_cloud_api_key,
+        result_type="markdown",
+        fast_mode=True,      # Use the Fast tier — skips heavy OCR/LLM layout pass
+        verbose=False,
+        num_workers=4,       # Parallelise multi-page jobs server-side
+    )
+    documents = parser.load_data(str(file_path))
+    return [doc.text for doc in documents if doc.text.strip()]
+
+
+# --- Step 2: Unified parse dispatcher ----------------------------------
+
+def parse_document(file_path: Path) -> list[str]:
+    """
+    Smart two-path parser:
+      1. Try fast local extraction first (milliseconds, no API cost).
+      2. Fall back to LlamaParse (seconds) only when local extraction fails
+         or returns no text (scanned images, complex PPTX, etc.).
+    """
+    pages = _try_fast_local_extract(file_path)
+    if pages:
+        print(f"[ingestion] Fast local extraction succeeded ({len(pages)} pages).")
+        return pages
+
+    print("[ingestion] Local extraction insufficient — falling back to LlamaParse (fast_mode).")
+    return _llamaparse_extract(file_path)
 
 
 # --- Step 3: Chunk text -----------------------------------------------
@@ -181,19 +225,19 @@ async def ingest_document(
         cleanup = False
 
     try:
-        # Parse (synchronous blocking network call -> send to thread)
+        # Parse (blocking network/CPU call → send to thread)
         print(f"[ingestion] Parsing: {file_path.name}")
         pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
-            raise ValueError("LlamaParse returned no text from the document.")
+            raise ValueError("Parser returned no text from the document.")
 
-        # Chunk (CPU bound -> send to thread)
+        # Chunk (CPU bound → send to thread)
         docs = await asyncio.to_thread(
             chunk_texts, pages, source_url, user_id, conversation_id
         )
         print(f"[ingestion] Created {len(docs)} chunks from {len(pages)} pages.")
 
-        # Store (synchronous blocking network call to OpenAI & Qdrant -> send to thread)
+        # Store (blocking network calls to OpenAI & Qdrant → send to thread)
         count = await asyncio.to_thread(store_documents, docs, target_collection)
         print(f"[ingestion] Stored {count} chunks in '{target_collection}' for user '{user_id}'.")
         return count

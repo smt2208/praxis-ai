@@ -34,6 +34,10 @@ fastembed>=0.3.0
 llama-parse>=0.5.0
 llama-cloud>=0.1.0
 
+# Fast local document extraction (PDF and DOCX — zero API latency path)
+pymupdf>=1.24.0        # C-level PDF text extraction; milliseconds vs 5-30s LlamaParse cloud call
+python-docx>=1.1.0     # Pure-Python DOCX extraction fallback
+
 # Academic search
 arxiv>=2.1.0
 

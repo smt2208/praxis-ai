@@ -15,13 +15,20 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isSendingRef = useRef(false);
-  const localConvIdRef = useRef(conversationId);
+  // Tracks the active conversation ID synchronously (avoids stale-closure bug
+  // where conversationId prop hasn't re-rendered yet between upload & send)
+  const localConvIdRef = useRef(null);
+
+  // Sync localConvIdRef whenever the parent conversationId prop changes
+  // (e.g. user clicks a different conversation in the sidebar)
+  useEffect(() => {
+    localConvIdRef.current = conversationId || null;
+  }, [conversationId]);
 
   // Fetch messages history and ingested documents whenever active conversationId changes
   useEffect(() => {
     setUploadingFileName(null);
     setError(null);
-    localConvIdRef.current = conversationId;
 
     // If currently sending a message (e.g. creating a new conversation on the fly), preserve optimistic messages
     if (isSendingRef.current) return;
@@ -58,14 +65,15 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, sending]);
 
-  // Ensure an active conversation ID exists in DB before performing actions
+  // Ensure an active conversation ID exists in DB before performing actions.
+  // Uses localConvIdRef so that the same conversation created during file upload
+  // is reused when the user immediately sends a message (avoids prop lag).
   const ensureActiveConversation = async () => {
     if (localConvIdRef.current) return localConvIdRef.current;
-    if (conversationId) return conversationId;
 
     const newConv = await api.createConversation('New Conversation');
     const newId = newConv.conversation_id;
-    localConvIdRef.current = newId;
+    localConvIdRef.current = newId;   // set synchronously before any await
     if (onSelectActiveConv) {
       onSelectActiveConv(newId);
     }
