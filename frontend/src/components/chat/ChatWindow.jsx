@@ -60,10 +60,12 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     fetchData();
   }, [conversationId]);
 
-  // Auto-scroll to bottom on new message
+  // Scroll to bottom when loading history for a conversation completes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, sending]);
+    if (!loadingHistory && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [loadingHistory, conversationId]);
 
   // Ensure an active conversation ID exists in DB before performing actions.
   // Uses localConvIdRef so that the same conversation created during file upload
@@ -92,6 +94,11 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
     isSendingRef.current = true;
+
+    // Scroll once to focus on the newly submitted question
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
 
     try {
       const activeId = await ensureActiveConversation();
