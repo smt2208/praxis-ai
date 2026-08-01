@@ -39,8 +39,10 @@ def send_verification_email(to_email: str, token: str) -> None:
 
         resend.api_key = settings.resend_api_key
 
+        sender = f"{settings.resend_from_name} <{settings.resend_from_email}>" if settings.resend_from_name else settings.resend_from_email
+
         resend.Emails.send({
-            "from": "Praxis <onboarding@resend.dev>",
+            "from": sender,
             "to": [to_email],
             "subject": "Verify your Praxis account",
             "html": _build_email_html(verify_url),
