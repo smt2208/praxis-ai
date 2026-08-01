@@ -12,7 +12,7 @@ Usage in main.py:
 
 Usage on an endpoint:
     @app.post("/api/v1/chat")
-    @limiter.limit("20/minute")
+    @limiter.limit("7/minute")
     async def chat(request: Request, ...):
         ...
 """

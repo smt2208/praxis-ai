@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
 
 @router.post("/chat", response_model=ChatResponse)
-@limiter.limit("20/minute")
+@limiter.limit("7/minute")
 async def chat(
     request: Request,
     body: ChatRequest,
@@ -81,7 +81,7 @@ async def chat(
 
 
 @router.post("/chat/stream")
-@limiter.limit("20/minute")
+@limiter.limit("7/minute")
 async def chat_stream(
     request: Request,
     body: ChatRequest,
