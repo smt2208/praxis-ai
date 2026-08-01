@@ -106,6 +106,7 @@ async def chat_stream(
 
     async def event_generator():
         full_answer = []
+        stream_error = False
 
         try:
             async for evt in astream_graph_events(
@@ -129,16 +130,27 @@ async def chat_stream(
 
                 yield f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
-            final_text = "".join(full_answer)
-            if final_text:
-                await save_message(pool, body.conversation_id, "assistant", final_text)
-
-            current_title = await get_conversation_title(pool, body.conversation_id)
-            if current_title == "New Conversation":
-                asyncio.create_task(auto_generate_title(pool, body.conversation_id, body.message))
-
         except Exception as err:
+            stream_error = True
             logger.error("[Chat Stream] Exception: %s", str(err))
             yield f"event: error\ndata: {json.dumps({'message': 'An error occurred while processing your request. Please try again.'})}\n\n"
+
+        finally:
+            # Always persist whatever was generated — even partial responses on error.
+            # This prevents orphaned user messages with no assistant reply.
+            final_text = "".join(full_answer)
+            if final_text:
+                try:
+                    await save_message(pool, body.conversation_id, "assistant", final_text)
+                except Exception:
+                    logger.warning("[Chat Stream] Failed to persist assistant message.")
+
+            if not stream_error:
+                try:
+                    current_title = await get_conversation_title(pool, body.conversation_id)
+                    if current_title == "New Conversation":
+                        asyncio.create_task(auto_generate_title(pool, body.conversation_id, body.message))
+                except Exception:
+                    pass
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

@@ -1,37 +1,77 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X, Menu } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Send, Square, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X, Menu, RotateCcw } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
+import { useChatStream } from '../../hooks/useChatStream';
+import { useFileUpload } from '../../hooks/useFileUpload';
 
 export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations, onSelectActiveConv, onToggleSidebar }) => {
-  const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [ingesting, setIngesting] = useState(false);
-  const [uploadingFileName, setUploadingFileName] = useState(null);  // shows during upload
-  const [activeFiles, setActiveFiles] = useState([]);               // persists after upload
-  const [error, setError] = useState(null);
-  const fileInputRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const isSendingRef = useRef(false);
-  // Tracks the active conversation ID synchronously (avoids stale-closure bug
-  // where conversationId prop hasn't re-rendered yet between upload & send)
-  const localConvIdRef = useRef(null);
 
-  // Sync localConvIdRef whenever the parent conversationId prop changes
-  // (e.g. user clicks a different conversation in the sidebar)
-  useEffect(() => {
-    localConvIdRef.current = conversationId || null;
-  }, [conversationId]);
+  const messagesEndRef      = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const textareaRef         = useRef(null);
 
-  // Fetch messages history and ingested documents whenever active conversationId changes
+  // ── Auto-scroll helpers ─────────────────────────────────────────────────
+
+  const isNearBottom = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (isNearBottom()) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [isNearBottom]);
+
+  // ── Textarea auto-grow ──────────────────────────────────────────────────
+
+  const adjustTextareaHeight = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+  }, []);
+
+  const resetTextareaHeight = useCallback(() => {
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  }, []);
+
+  // ── Chat stream hook ────────────────────────────────────────────────────
+
+  const {
+    messages, setMessages,
+    sending, error, setError,
+    lastFailedMessage,
+    isSendingRef, setConversationId,
+    ensureActiveConversation,
+    doSend, handleStop, handleRetry,
+  } = useChatStream({
+    scrollToBottom,
+    onConversationCreated: onSelectActiveConv,
+    onRefreshConversations,
+  });
+
+  // ── File upload hook ────────────────────────────────────────────────────
+
   useEffect(() => {
-    setUploadingFileName(null);
+    setConversationId(conversationId);
+  }, [conversationId, setConversationId]);
+
+  const {
+    ingesting, uploadingFileName,
+    activeFiles, setActiveFiles,
+    fileInputRef,
+    handleQuickFileSelect, removeFile,
+  } = useFileUpload({ ensureActiveConversation, setError, onRefreshConversations });
+
+  // ── Load history when conversation changes ──────────────────────────────
+
+  useEffect(() => {
     setError(null);
 
-    // If currently sending a message (e.g. creating a new conversation on the fly), preserve optimistic messages
-    if (isSendingRef.current) return;
+    if (isSendingRef.current) return;   // preserve optimistic state mid-send
 
     if (!conversationId) {
       setMessages([]);
@@ -40,6 +80,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       return;
     }
 
+    let cancelled = false;
     const fetchData = async () => {
       setLoadingHistory(true);
       try {
@@ -47,172 +88,45 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           api.getMessages(conversationId),
           api.getDocuments(conversationId).catch(() => []),
         ]);
+        if (cancelled) return;
         setMessages(history);
-        if (Array.isArray(docs)) {
-          setActiveFiles(docs.map((filename) => ({ name: filename })));
-        }
-      } catch (err) {
-        setError('Failed to load message history.');
+        if (Array.isArray(docs)) setActiveFiles(docs.map((f) => ({ name: f })));
+      } catch {
+        if (!cancelled) setError('Failed to load message history.');
       } finally {
-        setLoadingHistory(false);
+        if (!cancelled) setLoadingHistory(false);
       }
     };
     fetchData();
-  }, [conversationId]);
+    return () => { cancelled = true; };
+  }, [conversationId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll to bottom when loading history for a conversation completes
+  // Scroll to bottom after history loads
   useEffect(() => {
     if (!loadingHistory && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
   }, [loadingHistory, conversationId]);
 
-  // Ensure an active conversation ID exists in DB before performing actions.
-  // Uses localConvIdRef so that the same conversation created during file upload
-  // is reused when the user immediately sends a message (avoids prop lag).
-  const ensureActiveConversation = async () => {
-    if (localConvIdRef.current) return localConvIdRef.current;
-
-    const newConv = await api.createConversation('New Conversation');
-    const newId = newConv.conversation_id;
-    localConvIdRef.current = newId;   // set synchronously before any await
-    if (onSelectActiveConv) {
-      onSelectActiveConv(newId);
-    }
-    return newId;
-  };
+  // ── Send ────────────────────────────────────────────────────────────────
 
   const handleSend = async (e) => {
     e.preventDefault();
     if (!inputMessage.trim() || sending) return;
-
     const text = inputMessage.trim();
     setInputMessage('');
-    setError(null);
-
-    const userMsg = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setSending(true);
-    isSendingRef.current = true;
-
-    // Scroll once to focus on the newly submitted question
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 50);
-
-    try {
-      const activeId = await ensureActiveConversation();
-
-      // Add optimistic placeholder for assistant response
-      setMessages((prev) => [...prev, { role: 'assistant', content: '', route_taken: '' }]);
-
-      let streamFailed = false;
-
-      try {
-        await api.sendMessageStream(activeId, text, {
-          onAgentStart: (data) => {
-            if (data.agent || data.message) {
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last && last.role === 'assistant') {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    route_taken: data.agent || last.route_taken,
-                    status_message: data.message || last.status_message,
-                  };
-                }
-                return updated;
-              });
-            }
-          },
-          onToken: (data) => {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const last = updated[updated.length - 1];
-              if (last && last.role === 'assistant') {
-                updated[updated.length - 1] = {
-                  ...last,
-                  content: last.content + data.content,
-                  route_taken: data.agent || last.route_taken,
-                };
-              }
-              return updated;
-            });
-          },
-          onError: (data) => {
-            streamFailed = true;
-          },
-        });
-      } catch (streamErr) {
-        streamFailed = true;
-      }
-
-      // Fallback if SSE streaming failed or produced no content
-      if (streamFailed) {
-        // Remove the empty optimistic message
-        setMessages((prev) => prev.slice(0, -1));
-        const res = await api.sendMessage(activeId, text);
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: res.answer,
-          route_taken: res.route_taken,
-        }]);
-      }
-
-      if (onRefreshConversations) {
-        setTimeout(() => onRefreshConversations(), 1000);
-      }
-    } catch (err) {
-      setError(err.message || 'Error processing response');
-      setMessages((prev) => {
-        if (prev.length > 0 && prev[prev.length - 1].role === 'assistant' && !prev[prev.length - 1].content) {
-          return prev.slice(0, -1);
-        }
-        return prev;
-      });
-    } finally {
-      setSending(false);
-      isSendingRef.current = false;
-    }
+    resetTextareaHeight();
+    // Scroll to bottom immediately on submit
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    await doSend(text);
   };
 
-  const handleQuickFileSelect = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIngesting(true);
-    setUploadingFileName(file.name);
-    setError(null);
-
-    try {
-      const activeId = await ensureActiveConversation();
-      const res = await api.ingestFile(file, activeId);
-      setActiveFiles((prev) => [...prev, { name: file.name }]);
-      if (onRefreshConversations) {
-        onRefreshConversations();
-      }
-    } catch (err) {
-      const msg = err.message || '';
-      if (msg.includes('409') || msg.toLowerCase().includes('already been uploaded')) {
-        setError(`'${file.name}' is already in this conversation. Try a different conversation or rename the file.`);
-      } else if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
-        setError('File is too large. Please upload a smaller document (max ~10 MB).');
-      } else if (msg.includes('500')) {
-        setError('The server could not process this file. Try a different format (PDF, DOCX, TXT).');
-      } else {
-        setError('File upload failed. Please check the file and try again.');
-      }
-    } finally {
-      setIngesting(false);
-      setUploadingFileName(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <main className="chat-main">
-      {/* Chat header */}
+
+      {/* ── Header ── */}
       <div className="chat-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button className="mobile-menu-btn" onClick={onToggleSidebar} title="Open navigation sidebar">
@@ -223,52 +137,71 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         </div>
       </div>
 
-      <div className="messages-container">
+      {/* ── Messages ── */}
+      <div className="messages-container" ref={messagesContainerRef}>
+
         {loadingHistory ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-dim)' }}>
-            Loading message history...
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', gap: '16px' }}>
+            <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#818cf8' }} />
+            <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem', fontWeight: 500 }}>Loading conversation...</span>
           </div>
+
         ) : messages.length === 0 ? (
           <div style={{ textAlign: 'center', margin: 'auto', color: 'var(--text-dim)', maxWidth: '440px' }}>
             <Sparkles size={36} style={{ color: 'var(--primary)', marginBottom: '12px' }} />
             <h4 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Praxis Ready</h4>
-            <p style={{ fontSize: '0.9rem' }}>
-              Ask a question, request deep research, or upload a document.
-            </p>
+            <p style={{ fontSize: '0.9rem' }}>Ask a question, request deep research, or upload a document.</p>
           </div>
+
         ) : (
           messages.map((msg, idx) => <MessageItem key={idx} message={msg} />)
         )}
 
+        {/* Thinking indicator while waiting for first token */}
         {sending && (messages.length === 0 || messages[messages.length - 1]?.role !== 'assistant') && (
           <div className="message-bubble assistant">
-            <div className="message-avatar">
-              <Cpu size={18} className="animate-pulse" />
-            </div>
+            <div className="message-avatar"><Cpu size={18} className="animate-pulse" /></div>
             <div className="message-content" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span className="animate-pulse">Thinking...</span>
             </div>
           </div>
         )}
 
+        {/* Error + Retry */}
         {error && (
-          <div className="auth-alert" style={{ margin: '8px 0' }}>
+          <div className="auth-alert" style={{ margin: '8px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
             <span>{error}</span>
+            {lastFailedMessage && !sending && (
+              <button
+                onClick={handleRetry}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  background: 'rgba(129, 140, 248, 0.15)', border: '1px solid rgba(129, 140, 248, 0.3)',
+                  color: '#a5b4fc', padding: '6px 14px', borderRadius: '8px',
+                  fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                  transition: 'all 0.2s ease', flexShrink: 0,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(129, 140, 248, 0.25)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(129, 140, 248, 0.15)'; }}
+              >
+                <RotateCcw size={14} /> Retry
+              </button>
+            )}
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ── Input area ── */}
       <div className="chat-input-area">
 
-        {/* ── Uploading indicator ── */}
+        {/* Upload progress indicator */}
         {ingesting && uploadingFileName && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
             fontSize: '0.82rem', color: '#93c5fd',
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.2)',
+            background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.2)',
             padding: '6px 12px', borderRadius: '8px', marginBottom: '8px',
           }}>
             <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
@@ -276,24 +209,20 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           </div>
         )}
 
-        {/* ── Active files context pills ── */}
+        {/* Active document pills */}
         {activeFiles.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
             {activeFiles.map((f, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
                 fontSize: '0.78rem', color: '#6ee7b7',
-                background: 'rgba(52, 211, 153, 0.1)',
-                border: '1px solid rgba(52, 211, 153, 0.25)',
+                background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.25)',
                 padding: '4px 10px', borderRadius: '20px',
               }}>
                 <FileText size={12} />
                 <span>{f.name}</span>
-                <button
-                  onClick={() => setActiveFiles((prev) => prev.filter((_, idx) => idx !== i))}
-                  title="Remove from view"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0 2px', lineHeight: 1 }}
-                >
+                <button onClick={() => removeFile(i)} title="Remove from view"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0 2px', lineHeight: 1 }}>
                   <X size={11} />
                 </button>
               </div>
@@ -302,60 +231,51 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         )}
 
         <form onSubmit={handleSend} className="chat-input-box">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleQuickFileSelect}
-            style={{ display: 'none' }}
-            accept=".pdf,.docx,.pptx,.txt,.md"
-          />
 
-          <button
-            type="button"
-            className="attach-btn"
+          {/* Hidden file input */}
+          <input type="file" ref={fileInputRef} onChange={handleQuickFileSelect}
+            style={{ display: 'none' }} accept=".pdf,.docx,.pptx,.txt,.md" />
+
+          {/* Attach button */}
+          <button type="button" className="attach-btn"
             onClick={() => fileInputRef.current?.click()}
             title="Attach file (PDF, DOCX, TXT) to ingest into session"
             disabled={ingesting || sending}
             style={{
-              background: 'rgba(255, 255, 255, 0.06)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              flexShrink: 0,
-            }}
-          >
+              background: 'rgba(255, 255, 255, 0.06)', border: 'none', borderRadius: '50%',
+              width: '36px', height: '36px', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer',
+              transition: 'all 0.2s ease', flexShrink: 0,
+            }}>
             {ingesting ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={20} />}
           </button>
 
+          {/* Auto-growing textarea */}
           <textarea
+            ref={textareaRef}
             className="chat-textarea"
             placeholder={ingesting ? 'Waiting for document to finish uploading...' : 'Ask me anything...'}
             value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
+            onChange={(e) => { setInputMessage(e.target.value); adjustTextareaHeight(); }}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend(e);
-              }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e); }
             }}
             rows={1}
-            disabled={sending || ingesting}
+            disabled={ingesting}
           />
-          <button
-            type="submit"
-            className="send-btn"
-            disabled={!inputMessage.trim() || sending || ingesting}
-            title="Send Message"
-          >
-            <Send size={18} />
-          </button>
+
+          {/* Stop / Send button */}
+          {sending ? (
+            <button type="button" className="send-btn stop-btn" onClick={handleStop} title="Stop generating"
+              style={{ background: '#ef4444' }}>
+              <Square size={14} fill="white" />
+            </button>
+          ) : (
+            <button type="submit" className="send-btn"
+              disabled={!inputMessage.trim() || ingesting} title="Send Message">
+              <Send size={18} />
+            </button>
+          )}
         </form>
       </div>
     </main>

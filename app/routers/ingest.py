@@ -1,7 +1,10 @@
 import os
+import logging
 import tempfile
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+
+logger = logging.getLogger(__name__)
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool

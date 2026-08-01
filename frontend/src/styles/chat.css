@@ -334,6 +334,15 @@
   transform: none;
 }
 
+.send-btn.stop-btn {
+  background: #ef4444;
+}
+
+.send-btn.stop-btn:hover {
+  background: #dc2626;
+  transform: scale(1.04);
+}
+
 /* Mobile responsive helpers */
 .mobile-menu-btn {
   display: none;

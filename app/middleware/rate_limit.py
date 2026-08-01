@@ -54,6 +54,6 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> Response:
     return JSONResponse(
         status_code=429,
         content={
-            "detail": f"Rate limit exceeded: {exc.detail}. Please slow down.",
+            "detail": "You're sending messages too quickly. Please wait a moment and try again.",
         },
     )

@@ -1,5 +1,5 @@
-import React from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Sidebar = ({
@@ -12,6 +12,26 @@ export const Sidebar = ({
   onClose,
 }) => {
   const { user, logout } = useAuth();
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+
+  // Auto-reset confirmation after 3 seconds
+  useEffect(() => {
+    if (!confirmingDeleteId) return;
+    const timer = setTimeout(() => setConfirmingDeleteId(null), 3000);
+    return () => clearTimeout(timer);
+  }, [confirmingDeleteId]);
+
+  const handleDeleteClick = useCallback((e, convId) => {
+    e.stopPropagation();
+    if (confirmingDeleteId === convId) {
+      // Second click — actually delete
+      setConfirmingDeleteId(null);
+      onDeleteConv(convId);
+    } else {
+      // First click — enter confirmation mode
+      setConfirmingDeleteId(convId);
+    }
+  }, [confirmingDeleteId, onDeleteConv]);
 
   const getInitials = (email) => {
     if (!email) return 'U';
@@ -48,38 +68,53 @@ export const Sidebar = ({
             No conversations yet. Click "New Conversation" to start.
           </div>
         ) : (
-          conversations.map((conv) => (
-            <div
-              key={conv.conversation_id}
-              className={`conversation-item ${conv.conversation_id === activeConvId ? 'active' : ''}`}
-              onClick={() => onSelectConv(conv.conversation_id)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
-                <MessageSquare size={16} style={{ flexShrink: 0 }} />
-                <span className="conv-title">{conv.title || 'Untitled'}</span>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDeleteConv(conv.conversation_id); }}
-                title="Delete conversation"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-dim)',
-                  padding: '2px 4px',
-                  borderRadius: '4px',
-                  flexShrink: 0,
-                  opacity: 0.5,
-                  transition: 'opacity 0.2s, color 0.2s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-dim)'; }}
+          conversations.map((conv) => {
+            const isConfirming = confirmingDeleteId === conv.conversation_id;
+            return (
+              <div
+                key={conv.conversation_id}
+                className={`conversation-item ${conv.conversation_id === activeConvId ? 'active' : ''}`}
+                onClick={() => onSelectConv(conv.conversation_id)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}
               >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
+                  <MessageSquare size={16} style={{ flexShrink: 0 }} />
+                  <span className="conv-title">{conv.title || 'Untitled'}</span>
+                </div>
+                <button
+                  onClick={(e) => handleDeleteClick(e, conv.conversation_id)}
+                  title={isConfirming ? 'Click again to confirm delete' : 'Delete conversation'}
+                  style={{
+                    background: isConfirming ? 'rgba(248, 113, 113, 0.15)' : 'none',
+                    border: isConfirming ? '1px solid rgba(248, 113, 113, 0.3)' : 'none',
+                    cursor: 'pointer',
+                    color: isConfirming ? '#f87171' : 'var(--text-dim)',
+                    padding: isConfirming ? '2px 8px' : '2px 4px',
+                    borderRadius: '4px',
+                    flexShrink: 0,
+                    opacity: isConfirming ? 1 : 0.5,
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.72rem',
+                    fontWeight: isConfirming ? 600 : 400,
+                  }}
+                  onMouseEnter={(e) => { if (!isConfirming) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#f87171'; } }}
+                  onMouseLeave={(e) => { if (!isConfirming) { e.currentTarget.style.opacity = '0.5'; e.currentTarget.style.color = 'var(--text-dim)'; } }}
+                >
+                  {isConfirming ? (
+                    <>
+                      <Check size={12} />
+                      <span>Delete?</span>
+                    </>
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
 

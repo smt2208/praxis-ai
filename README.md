@@ -26,6 +26,7 @@ flowchart TD
     Tools[(🌐 Tavily / ArXiv / PubMed / Wikipedia)]:::db
 
     subgraph Orchestrator [🧠 LangGraph Multi-Agent Engine]
+        FastPath{⚡ Fast-Path Matcher}:::agent
         CEO{CEO Router}:::agent
         Knowledge[📚 Knowledge Team - Enterprise RAG]:::agent
         Research[🔬 Deep Research Team]:::agent
@@ -36,8 +37,11 @@ flowchart TD
     %% Workflow
     User -- "1. Auth & Message (Bearer JWT)" --> API
     API -- "2. Fetch History & Verify Ownership" --> DB
-    API -- "3. Stream Events (SSE)" --> CEO
+    API -- "3. Stream Events (SSE)" --> FastPath
     
+    FastPath -- "Instant Match (0ms)" --> FollowUp
+    FastPath -- "Fallback / Complex Intent" --> CEO
+
     CEO -- "Document Query" --> Knowledge
     CEO -- "Literature / Deep Study" --> Research
     CEO -- "General / News" --> General
@@ -57,18 +61,26 @@ flowchart TD
 
 ---
 
-## ✨ Key Features
+## ✨ Key Features & Reliability Hardening
 
-- **Real-Time SSE Streaming (`/api/v1/chat/stream`):** Live token-by-token text streaming and animated step-by-step progress status updates (*"Refining query context..."* → *"Searching vector index..."* → *"Synthesizing response..."*).
-- **Modular Production Architecture:** Clean separation of concerns with domain-based database packages (`app/db/`), request validation schemas (`app/schemas/`), dedicated business services (`app/services/`), and pluggable tool packages (`agents/tools/`).
+- **Real-Time SSE Streaming (`/api/v1/chat/stream`):** Live token-by-token text streaming and animated step-by-step progress status updates (*"Searching documents..."* → *"Thinking..."* → *"Synthesizing..."*).
+- **Fast-Path & Crash-Proof Intent Routing:**
+  - **Zero-Latency Pattern Matcher (`agents/routing.py`):** Instantly routes trivial greetings, pleasantries, and follow-up formatting requests to `follow_up` (0 ms latency, 0 LLM token cost).
+  - **LLM Router Fallback:** Structured LLM routing wrapped in fail-safe try/except blocks to guarantee fallback to `general` if OpenAI APIs experience transient glitches.
 - **Enterprise Document RAG Pipeline:**
   - **Conversational Query De-contextualization:** Resolves ambiguous pronouns (*"it"*, *"this"*, *"section 2"*) against chat history into explicit search queries before vector lookup.
   - **Adaptive Web Search Gating:** Evaluates document context completeness first—skipping web search when internal documents contain complete information (50% speedup, zero web noise).
   - **Grounded Citations:** Formats responses with explicit document source attributions (`[Source: document.pdf]`).
 - **Multi-Domain Deep Research Team:** Multi-step iterative research planner executing multi-query searches across **ArXiv** (CS/AI), **PubMed** (Biomedical), **Wikipedia**, and **Tavily Web & News Search**.
-- **Stateless Execution Model:** Stateless LangGraph architecture backed by PostgreSQL for infinite horizontal scaling across cloud instances.
-- **Security & Multi-Tenant Data Isolation:** JWT authentication (`HS256`), password hashing (`bcrypt`), email verification tokens, endpoint rate-limiting (`slowapi`), 20 MB file upload limit, file type validation, and strict database conversation ownership verification.
-- **Modern Responsive UI:** Built with Vite + React 18, featuring brand logo identity, dark glassmorphism aesthetic, mobile off-canvas drawer sidebar, and fail-safe HTTP fallback.
+- **Production Error Sanitization & Context Budgeting:**
+  - **Sanitized User-Friendly Exceptions:** Global backend exception handlers sanitize raw internal stack traces into friendly JSON messages.
+  - **Global Context Truncation (`max_context_chars` = 120,000):** Configurable character token budget protecting requests from OpenAI 429 TPM rate-limit errors.
+  - **Partial Message Persistence:** `try/finally` stream handler guarantees partial AI tokens are saved to the database even if a stream disconnects mid-response.
+- **ChatGPT & Claude Quality UI/UX:**
+  - **Smart Token Auto-Scroll:** Chat viewport follows streaming tokens automatically without hijacking scroll when users read earlier history.
+  - **Dynamic Input Auto-Grow:** Multi-line text input resizes fluidly up to 200px.
+  - **Stream Cancellation:** Dedicated "Stop Generating" button utilizing `AbortController`.
+  - **Inline Message Retry & Confirmation:** Instant retry button on message failure and two-click confirmation pattern on conversation deletion.
 
 ---
 
@@ -142,8 +154,8 @@ erDiagram
 ```text
 praxis-ai/
 ├── app/
-│   ├── main.py             # FastAPI entry point, CORS & middleware
-│   ├── config.py           # Environment settings & DEFAULT_MODEL
+│   ├── main.py             # FastAPI entry point, CORS & global exception handlers
+│   ├── config.py           # Settings, app_base_url & max_context_chars (120k)
 │   ├── dependencies.py     # Shared asyncpg pool dependency
 │   ├── email.py            # Verification email integration
 │   ├── db/                 # Modular Database Package
@@ -175,10 +187,11 @@ praxis-ai/
 │   │   ├── security.py     # Password hashing (bcrypt) & JWT token lifecycle
 │   │   └── dependencies.py # JWT bearer token authorization dependency
 │   └── middleware/         # App middleware
-│       └── rate_limit.py   # Slowapi rate-limiting configuration
+│       └── rate_limit.py   # Slowapi rate-limiting configuration & clean 429 handler
 ├── agents/
-│   ├── orchestrator.py     # CEO router node & SSE event stream generator
-│   ├── utils.py            # Shared agent utilities (formatting, prompts)
+│   ├── orchestrator.py     # Slim LangGraph CEO orchestrator & SSE event generator
+│   ├── routing.py          # Fast-path pattern matcher & LLM intent router
+│   ├── utils.py            # Shared agent utilities (formatting, doc context)
 │   ├── tools/              # Pluggable Tools Package
 │   │   ├── web_search.py   # Tavily web & news search
 │   │   ├── academic.py     # arXiv & PubMed search
@@ -187,8 +200,11 @@ praxis-ai/
 │   │   ├── time_utils.py   # Timezone-aware date/time helper
 │   │   └── __init__.py     # Tools export hub
 │   └── subgraphs/
-│       ├── knowledge_team.py # Enterprise RAG pipeline (De-contextualization, Gated Web, Citations)
-│       ├── research_team.py  # Deep multi-step academic research team
+│       ├── knowledge_graph.py# RAG state machine graph & parallel fetch nodes
+│       ├── knowledge_rag.py  # Conversational query rewriter & context evaluator
+│       ├── knowledge_team.py # Sync & streaming entry points for RAG
+│       ├── research_graph.py # Deep research planner, researcher & reporter graph
+│       ├── research_team.py  # Sync & streaming entry points for research team
 │       └── general_agent.py  # ReAct web & news search agent
 ├── prompts/
 │   ├── orchestrator_prompts.py
@@ -197,10 +213,13 @@ praxis-ai/
 │   └── general_prompts.py
 ├── frontend/
 │   ├── src/
+│   │   ├── hooks/
+│   │   │   ├── useChatStream.js # Stream reader, send, stop, & retry state hook
+│   │   │   └── useFileUpload.js # File ingestion state & error mapping hook
 │   │   ├── components/     # React components (ChatWindow, Sidebar, MessageItem, AuthModal)
-│   │   ├── context/        # AuthContext state provider with toast notifications
-│   │   ├── services/       # API client with SSE fetch stream reader
-│   │   └── styles/         # Glassmorphism dark theme CSS
+│   │   ├── context/        # AuthContext state provider
+│   │   ├── services/       # API client with JWT refresh & stream reader
+│   │   └── styles/         # Dark glassmorphic CSS design system
 │   └── public/
 │       ├── logo.png        # Brand logo asset
 │       └── favicon.png     # Browser favicon
@@ -255,6 +274,7 @@ LLAMA_CLOUD_API_KEY=llx-...
 
 # Auth & Security
 SECRET_KEY=your_super_secret_jwt_key
+APP_BASE_URL=https://praxisapp.online
 ```
 
 ### 4. Run Backend & Frontend

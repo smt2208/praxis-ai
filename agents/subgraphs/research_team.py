@@ -1,171 +1,42 @@
 """
 agents/subgraphs/research_team.py
 
-Department B — Deep Thinking / Academic Research Team
-Workflow: Planner → Researcher (loops up to MAX_ITER times) → Reporter
+Public entry points for the Research Team department.
+Heavy implementation is split into:
+  - research_graph.py  → LangGraph state + nodes + compiled graph
 
-Private state never leaks to the parent CEO graph.
+This file only contains:
+  run_research_team      — synchronous wrapper (called by LangGraph CEO node)
+  astream_research_team  — async streaming generator (called by SSE endpoint)
 """
+import asyncio
 import logging
-import operator
-from typing import TypedDict, Annotated
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
 from agents.utils import format_history
-from agents.tools import tavily_tool, arxiv_tool, wikipedia_tool, pubmed_tool
-from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
+from agents.subgraphs.research_graph import (
+    research_graph, ResearchState,
+    planner_node, researcher_node,
+    MAX_RESEARCH_ITERATIONS,
+)
+from prompts.research_prompts import REPORTER_SYSTEM, REPORTER_HUMAN
 
 logger = logging.getLogger(__name__)
-
-
-# --- Constants ---------------------------------------------------------
-MAX_RESEARCH_ITERATIONS = 3   # 3 loops × ~20s each ≈ 60s max — keeps us under Nginx timeout
-
-
-# --- Private state -----------------------------------------------------
-
-class ResearchState(TypedDict):
-    query: str
-    history_summary: str
-    research_plan: list[str]          # Step-by-step checklist from planner
-    findings: Annotated[list[str], operator.add]  # Accumulated, appended each loop
-    iteration: int
-    final_report: str
-
-
-# --- LLM ---------------------------------------------------------------
 
 _llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
 
 
-# --- Node: Planner -----------------------------------------------------
-
-@traceable(name="Research Planner Node", run_type="chain")
-def planner_node(state: ResearchState) -> dict:
-    """Break the query into a numbered research checklist."""
-    plan_prompt = state["query"]
-    if state.get("history_summary"):
-        plan_prompt = f"Context from previous conversation:\n{state['history_summary']}\n\nResearch Task: {state['query']}"
-
-    from datetime import datetime
-    current_time = datetime.now().strftime("%A, %B %d, %Y")
-    
-    messages = [
-        SystemMessage(content=f"{PLANNER_SYSTEM}\n\nCURRENT SYSTEM DATE: {current_time}"),
-        HumanMessage(content=plan_prompt),
-    ]
-    response = _llm.invoke(messages)
-    # Parse numbered list into python list
-    lines = [line.strip() for line in response.content.strip().split("\n") if line.strip()]
-    plan = [line.lstrip("0123456789. )").strip() for line in lines if line]
-    if not plan:
-        plan = [state["query"]]
-    logger.info("[Research Planner] Generated %d-step plan: %s", len(plan), plan)
-    return {"research_plan": plan, "iteration": 0}
-
-
-# --- Node: Researcher --------------------------------------------------
-
-@traceable(name="Researcher Node", run_type="chain")
-def researcher_node(state: ResearchState) -> dict:
-    """
-    Pick the next un-researched step and search for it.
-    Appends findings (list reducer merges them).
-    """
-    # Determine which step to work on based on iteration count
-    plan = state["research_plan"]
-    if not plan:
-        plan = [state["query"]]
-    iteration = state["iteration"]
-    step_idx = min(iteration, len(plan) - 1)
-    current_step = plan[step_idx]
-
-    logger.info("[Researcher] Executing Step %d/%d: '%s'", step_idx + 1, len(plan), current_step)
-    # Deep Agent equipped with multi-domain research tools (Academic, Medical, Encyclopedic, Web)
-    agent = create_react_agent(_llm, [arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
-    prompt = RESEARCHER_HUMAN.format(
-        query=state['query'],
-        step_num=step_idx + 1,
-        total_steps=len(plan),
-        current_step=current_step
-    )
-    
-    from datetime import datetime
-    current_time = datetime.now().strftime("%A, %B %d, %Y")
-    sys_msg = SystemMessage(content=f"CURRENT SYSTEM DATE: {current_time}. IMPORTANT: Always use this date as your reference for 'today', 'latest news', or current events.")
-
-    # recursion_limit=4 prevents runaway tool-calling loops
-    result = agent.invoke({"messages": [sys_msg, HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
-    finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
-    logger.info("[Researcher] Step %d completed.", step_idx + 1)
-
-    return {
-        "findings": [finding],
-        "iteration": iteration + 1,
-    }
-
-
-# --- Routing: continue or finish? --------------------------------------
-
-def should_continue(state: ResearchState) -> str:
-    """Loop researcher until all plan steps are covered or max iterations hit."""
-    if state["iteration"] >= len(state["research_plan"]):
-        return "reporter"
-    if state["iteration"] >= MAX_RESEARCH_ITERATIONS:
-        return "reporter"
-    return "researcher"
-
-
-# --- Node: Reporter ----------------------------------------------------
-
-@traceable(name="Reporter Node", run_type="chain")
-def reporter_node(state: ResearchState) -> dict:
-    """Synthesize all findings into a final, well-structured report."""
-    findings_text = "\n\n".join(state["findings"])
-    messages = [
-        SystemMessage(content=REPORTER_SYSTEM),
-        HumanMessage(content=REPORTER_HUMAN.format(
-            query=state['query'],
-            findings_text=findings_text
-        )),
-    ]
-    response = _llm.invoke(messages)
-    return {"final_report": response.content}
-
-
-# --- Build subgraph ----------------------------------------------------
-
-def _build_research_graph():
-    builder = StateGraph(ResearchState)
-    builder.add_node("planner", planner_node)
-    builder.add_node("researcher", researcher_node)
-    builder.add_node("reporter", reporter_node)
-
-    builder.add_edge(START, "planner")
-    builder.add_edge("planner", "researcher")
-    builder.add_conditional_edges("researcher", should_continue, {"researcher": "researcher", "reporter": "reporter"})
-    builder.add_edge("reporter", END)
-
-    return builder.compile()
-
-
-research_graph = _build_research_graph()
-
-
-# --- Wrapper (called by parent graph) ----------------------------------
+# ---------------------------------------------------------------------------
+# Synchronous wrapper — called by the CEO LangGraph node
+# ---------------------------------------------------------------------------
 
 @traceable(name="Research Team Run", run_type="chain")
 def run_research_team(query: str, history: list = None) -> str:
-    """
-    Entry point for the parent CEO graph.
-    Returns only the final report string.
-    """
+    """Entry point for synchronous invocation from the CEO node."""
     history_summary = format_history(history) if history else ""
 
     result = research_graph.invoke({
@@ -179,15 +50,18 @@ def run_research_team(query: str, history: list = None) -> str:
     return result["final_report"]
 
 
+# ---------------------------------------------------------------------------
+# Async streaming generator — called by the SSE chat endpoint
+# ---------------------------------------------------------------------------
+
 @traceable(name="Research Team Stream", run_type="chain")
 async def astream_research_team(query: str, history: list = None):
     """
-    Async generator yielding step-by-step progress events and streaming report tokens.
-    Yields dicts with:
-      {"type": "status", "message": "..."} OR {"type": "token", "content": "..."}
+    Async generator yielding step-by-step progress then streaming report tokens.
+    Yields dicts:
+        {"type": "status", "message": "..."}
+        {"type": "token",  "content": "..."}
     """
-    import asyncio
-
     history_summary = format_history(history) if history else ""
 
     state: ResearchState = {
@@ -204,26 +78,21 @@ async def astream_research_team(query: str, history: list = None):
     plan_delta = await asyncio.to_thread(planner_node, state)
     state.update(plan_delta)
 
-    plan = state["research_plan"]
-    total_steps = min(len(plan), MAX_RESEARCH_ITERATIONS)
-
-    # Step 2: Multi-step Research Execution
+    # Step 2: Multi-step research execution
+    total_steps = min(len(state["research_plan"]), MAX_RESEARCH_ITERATIONS)
     for i in range(total_steps):
         yield {"type": "status", "message": "Researching..."}
         research_delta = await asyncio.to_thread(researcher_node, state)
         state["findings"].extend(research_delta.get("findings", []))
         state["iteration"] = research_delta.get("iteration", i + 1)
 
-    # Step 3: Synthesis & Live Token Streaming
+    # Step 3: Synthesis with live token streaming
     yield {"type": "status", "message": "Synthesizing..."}
 
     findings_text = "\n\n".join(state["findings"])
     messages = [
         SystemMessage(content=REPORTER_SYSTEM),
-        HumanMessage(content=REPORTER_HUMAN.format(
-            query=state['query'],
-            findings_text=findings_text
-        )),
+        HumanMessage(content=REPORTER_HUMAN.format(query=state["query"], findings_text=findings_text)),
     ]
 
     async for chunk in _llm.astream(messages):
@@ -234,4 +103,3 @@ async def astream_research_team(query: str, history: list = None):
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
                     yield {"type": "token", "content": block["text"]}
-
