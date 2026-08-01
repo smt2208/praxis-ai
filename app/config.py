@@ -1,5 +1,15 @@
+"""
+app/config.py
+
+Centralized application settings loaded from environment variables / .env file.
+All secrets and external service keys live here — never hardcoded in business logic.
+"""
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Default LLM model used across all agents — change once here to update everywhere
+DEFAULT_MODEL = "gpt-5.4-mini-2026-03-17"
 
 
 class Settings(BaseSettings):
@@ -31,14 +41,17 @@ class Settings(BaseSettings):
     # JWT
     secret_key: str
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30        # 30 minutes — keep short
-    refresh_token_expire_days: int = 7           # 7 days — stored in DB
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
 
+    # LangSmith Tracing (optional — leave blank to disable)
+    langchain_tracing_v2: str = "true"
+    langchain_api_key: str = ""
+    langchain_project: str = "praxis-ai"
 
     # Email Verification (Resend)
-    resend_api_key: str = "re_KJWEqzRN_Hdv9Q4yGT1Z9S5SyCz18vGAx"           # Get from https://resend.com — leave empty to skip sending
-    app_base_url: str = "https://praxis-ai-nine.vercel.app"  # Frontend origin for email verification link
-
+    resend_api_key: str = ""
+    app_base_url: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

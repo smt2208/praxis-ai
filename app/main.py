@@ -10,6 +10,7 @@ Startup sequence (via lifespan):
   6. App ready
 """
 from contextlib import asynccontextmanager
+import logging
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
@@ -26,6 +27,7 @@ from app.routers.ingest import router as ingest_router
 from app.middleware.rate_limit import limiter, rate_limit_handler
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 # --- Lifespan ----------------------------------------------------------
@@ -33,16 +35,16 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     # ── Startup ──────────────────────────────────────────────────────
-    print("[startup] Connecting to PostgreSQL...")
+    logger.info("[startup] Connecting to PostgreSQL...")
     app.state.db_pool = await init_db_pool(settings)
-    print("[startup] Database ready. Tables ensured.")
+    logger.info("[startup] Database ready. Tables ensured.")
 
-    print("[startup] LangGraph orchestrator compiled.")
+    logger.info("[startup] LangGraph orchestrator compiled.")
 
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────────
-    print("[shutdown] Closing database pool...")
+    logger.info("[shutdown] Closing database pool...")
     await app.state.db_pool.close()
 
 

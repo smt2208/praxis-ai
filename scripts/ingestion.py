@@ -13,6 +13,7 @@ Document ingestion pipeline:
 Called by the POST /api/v1/ingest endpoint.
 """
 import os
+import logging
 import tempfile
 import asyncio
 from pathlib import Path
@@ -25,6 +26,8 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -146,10 +149,10 @@ def parse_document(file_path: Path) -> list[str]:
     """
     pages = _try_fast_local_extract(file_path)
     if pages:
-        print(f"[ingestion] Fast local extraction succeeded ({len(pages)} pages).")
+        logger.info("[ingestion] Fast local extraction succeeded (%d pages).", len(pages))
         return pages
 
-    print("[ingestion] Local extraction insufficient — falling back to LlamaParse (fast_mode).")
+    logger.info("[ingestion] Local extraction insufficient — falling back to LlamaParse (fast_mode).")
     return _llamaparse_extract(file_path)
 
 
@@ -231,7 +234,7 @@ async def ingest_document(
 
     try:
         # Parse (blocking network/CPU call → send to thread)
-        print(f"[ingestion] Parsing: {file_path.name}")
+        logger.info("[ingestion] Parsing: %s", file_path.name)
         pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
             raise ValueError("Parser returned no text from the document.")
@@ -240,11 +243,11 @@ async def ingest_document(
         docs = await asyncio.to_thread(
             chunk_texts, pages, source_url, user_id, conversation_id
         )
-        print(f"[ingestion] Created {len(docs)} chunks from {len(pages)} pages.")
+        logger.info("[ingestion] Created %d chunks from %d pages.", len(docs), len(pages))
 
         # Store (blocking network calls to OpenAI & Qdrant → send to thread)
         count = await asyncio.to_thread(store_documents, docs, target_collection)
-        print(f"[ingestion] Stored {count} chunks in '{target_collection}' for user '{user_id}'.")
+        logger.info("[ingestion] Stored %d chunks in '%s' for user '%s'.", count, target_collection, user_id)
         return count
 
     finally:

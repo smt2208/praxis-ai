@@ -6,17 +6,22 @@ Workflow: Planner → Researcher (loops up to MAX_ITER times) → Reporter
 
 Private state never leaks to the parent CEO graph.
 """
-from typing import TypedDict, Annotated
+import logging
 import operator
+from typing import TypedDict, Annotated
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
-
 from langsmith import traceable
 
+from app.config import DEFAULT_MODEL
+from agents.utils import format_history
 from agents.tools import tavily_tool, arxiv_tool, wikipedia_tool, pubmed_tool
 from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
+
+logger = logging.getLogger(__name__)
 
 
 # --- Constants ---------------------------------------------------------
@@ -36,7 +41,7 @@ class ResearchState(TypedDict):
 
 # --- LLM ---------------------------------------------------------------
 
-_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
+_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
 
 
 # --- Node: Planner -----------------------------------------------------
@@ -61,7 +66,7 @@ def planner_node(state: ResearchState) -> dict:
     plan = [line.lstrip("0123456789. )").strip() for line in lines if line]
     if not plan:
         plan = [state["query"]]
-    print(f"[Deep Research Agent] Generated research plan with {len(plan)} steps: {plan}", flush=True)
+    logger.info("[Research Planner] Generated %d-step plan: %s", len(plan), plan)
     return {"research_plan": plan, "iteration": 0}
 
 
@@ -81,7 +86,7 @@ def researcher_node(state: ResearchState) -> dict:
     step_idx = min(iteration, len(plan) - 1)
     current_step = plan[step_idx]
 
-    print(f"[Deep Research Agent] Executing Step {step_idx + 1}/{len(plan)}: '{current_step}'", flush=True)
+    logger.info("[Researcher] Executing Step %d/%d: '%s'", step_idx + 1, len(plan), current_step)
     # Deep Agent equipped with multi-domain research tools (Academic, Medical, Encyclopedic, Web)
     agent = create_react_agent(_llm, [arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
     prompt = RESEARCHER_HUMAN.format(
@@ -98,7 +103,7 @@ def researcher_node(state: ResearchState) -> dict:
     # recursion_limit=4 prevents runaway tool-calling loops
     result = agent.invoke({"messages": [sys_msg, HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
     finding = f"Step {step_idx + 1} [{current_step}]:\n{result['messages'][-1].content}"
-    print(f"[Deep Research Agent] Step {step_idx + 1} completed.", flush=True)
+    logger.info("[Researcher] Step %d completed.", step_idx + 1)
 
     return {
         "findings": [finding],
@@ -161,9 +166,7 @@ def run_research_team(query: str, history: list = None) -> str:
     Entry point for the parent CEO graph.
     Returns only the final report string.
     """
-    history_summary = ""
-    if history:
-        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+    history_summary = format_history(history) if history else ""
 
     result = research_graph.invoke({
         "query": query,
@@ -185,9 +188,7 @@ async def astream_research_team(query: str, history: list = None):
     """
     import asyncio
 
-    history_summary = ""
-    if history:
-        history_summary = "\n".join(f"{m.type.upper()}: {m.content}" for m in history[-4:])
+    history_summary = format_history(history) if history else ""
 
     state: ResearchState = {
         "query": query,

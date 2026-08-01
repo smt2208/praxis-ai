@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -9,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
+from app.config import DEFAULT_MODEL
 from app.middleware.rate_limit import limiter
 from app.database import (
     get_history, save_message, get_conversation_has_documents,
@@ -17,6 +20,8 @@ from app.database import (
 )
 from app.schemas import ChatRequest, ChatResponse
 from agents.orchestrator import invoke_graph, astream_graph_events
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
 
@@ -60,7 +65,7 @@ async def chat(
             has_documents=has_documents,
         )
     except Exception as e:
-        print(f"[Chat Exception] {str(e)}", flush=True)
+        logger.error("[Chat] Exception: %s", str(e))
         raise HTTPException(status_code=500, detail="An error occurred while processing your request. Please try again.")
 
     # 3. Persist the assistant reply after generation succeeds
@@ -145,7 +150,7 @@ async def chat_stream(
                 asyncio.create_task(_auto_generate_title(pool, body.conversation_id, body.message))
 
         except Exception as err:
-            print(f"[Chat Stream Exception] {str(err)}", flush=True)
+            logger.error("[Chat Stream] Exception: %s", str(err))
             yield f"event: error\ndata: {json.dumps({'message': 'An error occurred while processing your request. Please try again.'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -154,7 +159,7 @@ async def chat_stream(
 async def _auto_generate_title(pool: asyncpg.Pool, conversation_id: str, first_message: str):
     """Background task to generate a descriptive 3-5 word title like ChatGPT/Claude."""
     try:
-        title_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0.5)
+        title_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0.5)
         response = await asyncio.to_thread(
             title_llm.invoke,
             [
@@ -166,4 +171,4 @@ async def _auto_generate_title(pool: asyncpg.Pool, conversation_id: str, first_m
         if new_title:
             await update_conversation_title(pool, conversation_id, new_title)
     except Exception as e:
-        print(f"[auto-title] Warning: Could not auto-title conversation: {e}")
+        logger.warning("[auto-title] Could not auto-title conversation: %s", e)

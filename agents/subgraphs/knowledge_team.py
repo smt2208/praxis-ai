@@ -17,17 +17,22 @@ Flow:
 Private state never leaks to the parent CEO graph.
 """
 import asyncio
+import logging
 from typing import TypedDict
+
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import create_react_agent
-
 from langsmith import traceable
 
+from app.config import DEFAULT_MODEL
+from agents.utils import format_history
 from agents.tools import tavily_tool
 from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN, CRITIC_SYSTEM
+
+logger = logging.getLogger(__name__)
 
 
 # --- Private state (isolated from parent) ------------------------------
@@ -46,7 +51,7 @@ class KnowledgeState(TypedDict):
 
 # --- LLM ---------------------------------------------------------------
 
-_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
+_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
 
 
 # --- Structured critic output ------------------------------------------
@@ -223,21 +228,7 @@ def evaluate_doc_context(query: str, rag_results: str) -> bool:
         return True
 
 
-def _format_history(history: list) -> str:
-    """Format history list safely whether elements are dicts or BaseMessage objects."""
-    if not history:
-        return ""
-    formatted = []
-    for m in history[-4:]:
-        if isinstance(m, dict):
-            role = m.get("role", "user").upper()
-            content = m.get("content", "")
-        else:
-            role = getattr(m, "type", "human").upper()
-            content = getattr(m, "content", "")
-        if content:
-            formatted.append(f"{role}: {content}")
-    return "\n".join(formatted)
+# _format_history has been moved to agents/utils.py as format_history()
 
 
 # --- Wrapper (called by parent graph) ----------------------------------
@@ -245,7 +236,7 @@ def _format_history(history: list) -> str:
 @traceable(name="Knowledge Team Run", run_type="chain")
 def run_knowledge_team(query: str, user_id: str, conversation_id: str, history: list = None) -> str:
     """Entry point for synchronous graph invocation."""
-    history_summary = _format_history(history)
+    history_summary = format_history(history)
 
     standalone_query = rewrite_query(query, history_summary)
 
@@ -270,7 +261,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
     Yields dicts with:
       {"type": "status", "message": "..."} OR {"type": "token", "content": "..."}
     """
-    history_summary = _format_history(history)
+    history_summary = format_history(history)
 
     # Step 1: Conversational Query Rewriting
     yield {"type": "status", "message": "Analyzing query..."}

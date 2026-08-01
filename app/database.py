@@ -1,5 +1,13 @@
+import asyncio
+import logging
+
 import asyncpg
-from app.config import Settings
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 # --- DDL ---------------------------------------------------------------
@@ -46,9 +54,6 @@ CREATE TABLE IF NOT EXISTS conversation_documents (
 );
 """
 
-_ADD_HASHED_PASSWORD_COL = """
-ALTER TABLE users ADD COLUMN IF NOT EXISTS hashed_password TEXT NOT NULL DEFAULT '';
-"""
 
 # Tracks whether a conversation has ever had at least one document ingested for it.
 # The CEO uses this as a hard gate — knowledge_team is never reachable if False.
@@ -81,9 +86,8 @@ async def init_db_pool(settings: Settings) -> asyncpg.Pool:
     )
     async with pool.acquire() as conn:
         await conn.execute(_CREATE_TABLES_SQL)
-        await conn.execute(_ADD_HASHED_PASSWORD_COL)
         await conn.execute(_ADD_CONVERSATION_HAS_DOCUMENTS_COL)
-        await conn.execute(_ADD_EMAIL_VERIFICATION_COLS)  # idempotent — safe on every startup
+        await conn.execute(_ADD_EMAIL_VERIFICATION_COLS)
     return pool
 
 
@@ -178,21 +182,12 @@ async def delete_conversation_qdrant_chunks(conversation_id: str) -> None:
     Called immediately before the Postgres conversation row is deleted so that
     vector data never becomes orphaned. Errors are caught and logged — a Qdrant
     blip should not block the user from deleting their conversation in the app.
-
-    Qdrant filter covers both flat payload keys and metadata-nested keys because
-    langchain_qdrant stores them either way depending on the SDK version.
     """
-    import logging
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import Filter, FieldCondition, MatchValue
-
-    from app.config import get_settings
     cfg = get_settings()
 
     try:
         client = QdrantClient(url=cfg.qdrant_url, api_key=cfg.qdrant_api_key)
 
-        # Match chunks stored with either flat or nested metadata key
         conv_filter = Filter(
             should=[
                 Filter(must=[FieldCondition(key="conversation_id", match=MatchValue(value=conversation_id))]),
@@ -200,13 +195,15 @@ async def delete_conversation_qdrant_chunks(conversation_id: str) -> None:
             ]
         )
 
-        client.delete(
+        # Qdrant client is synchronous — run in thread to avoid blocking the event loop
+        await asyncio.to_thread(
+            client.delete,
             collection_name=cfg.qdrant_collection_name,
             points_selector=conv_filter,
         )
-        logging.info(f"[qdrant] Deleted chunks for conversation {conversation_id}")
+        logger.info("[qdrant] Deleted chunks for conversation %s", conversation_id)
     except Exception as exc:
-        logging.warning(f"[qdrant] Could not delete chunks for conversation {conversation_id}: {exc}")
+        logger.warning("[qdrant] Could not delete chunks for conversation %s: %s", conversation_id, exc)
 
 
 

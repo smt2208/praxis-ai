@@ -5,19 +5,24 @@ The CEO — main stateless LangGraph orchestrator.
 Reads injected chat history, routes to the right department,
 and returns the final answer. No checkpointer — fully stateless.
 """
+import logging
 from typing import TypedDict, Literal, Annotated
+
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-
 from langsmith import traceable
 
+from app.config import DEFAULT_MODEL
+from agents.utils import format_history, build_doc_context
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
 from prompts.orchestrator_prompts import ROUTER_SYSTEM, FOLLOW_UP_SYSTEM
+
+logger = logging.getLogger(__name__)
 
 
 # --- Orchestrator state (shared across all top-level nodes) ------------
@@ -25,9 +30,9 @@ from prompts.orchestrator_prompts import ROUTER_SYSTEM, FOLLOW_UP_SYSTEM
 class OrchestratorState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     query: str
-    user_id: str       # propagated from JWT — needed by knowledge_team for doc isolation
-    conversation_id: str # needed to scope docs to this specific thread
-    has_documents: bool  # hard gate — if False, knowledge_team route is blocked in code
+    user_id: str
+    conversation_id: str
+    has_documents: bool
     route: str
     final_answer: str
 
@@ -41,10 +46,8 @@ class RouteDecision(BaseModel):
 
 # --- LLMs --------------------------------------------------------------
 
-_ceo_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0)
-_followup_llm = ChatOpenAI(model="gpt-5.4-mini-2026-03-17", temperature=0.7)
-
-# Bind structured output once — reuse on every call
+_ceo_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
+_followup_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0.7)
 _router_llm = _ceo_llm.with_structured_output(RouteDecision)
 
 
@@ -52,24 +55,13 @@ _router_llm = _ceo_llm.with_structured_output(RouteDecision)
 
 def ceo_node(state: OrchestratorState) -> dict:
     """Analyze the conversation and route to the correct department."""
-    history_text = "\n".join(
-        f"{m.type.upper()}: {m.content}" for m in state["messages"][:-1]
-    )
-
-    # Tell the router explicitly whether documents are present — critical for correct routing
-    doc_context = (
-        "IMPORTANT: The user HAS uploaded documents to this conversation. "
-        "If their question could relate to the uploaded documents, route to knowledge_team."
-        if state["has_documents"]
-        else "The user has NOT uploaded any documents to this conversation. Do NOT route to knowledge_team."
-    )
+    history_text = format_history(state["messages"][:-1], last_n=10)
+    doc_context = build_doc_context(state["has_documents"])
 
     routing_messages = [
         SystemMessage(content=ROUTER_SYSTEM),
         HumanMessage(content=(
-            f"{doc_context}\n\n"
-            f"Conversation so far:\n{history_text}\n\n"
-            f"Latest user message: {state['query']}"
+            f"{doc_context}\n\nConversation so far:\n{history_text}\n\nLatest user message: {state['query']}"
             if history_text else
             f"{doc_context}\n\nUser message: {state['query']}"
         )),
@@ -82,9 +74,8 @@ def ceo_node(state: OrchestratorState) -> dict:
     if route == "knowledge_team" and not state["has_documents"]:
         route = "general"
 
-    print(f"[CEO Router] Query: '{state['query'][:60]}' -> Routed to: {route}", flush=True)
+    logger.info("[CEO Router] Query: '%s' -> Routed to: %s", state["query"][:60], route)
     return {"route": route}
-
 
 
 # --- Node: Knowledge Team wrapper --------------------------------------
@@ -103,7 +94,7 @@ def knowledge_team_node(state: OrchestratorState) -> dict:
 # --- Node: Research Team wrapper ---------------------------------------
 
 def research_team_node(state: OrchestratorState) -> dict:
-    print(f"[Deep Research Team] Executing deep research graph for query: '{state['query']}'", flush=True)
+    logger.info("[Deep Research Team] Executing for query: '%s'", state["query"][:60])
     answer = run_research_team(state["query"], history=state["messages"][:-1])
     return {"final_answer": answer}
 
@@ -112,7 +103,7 @@ def research_team_node(state: OrchestratorState) -> dict:
 
 def general_agent_node(state: OrchestratorState) -> dict:
     """Handles everyday questions with web search — ChatGPT-like experience."""
-    answer = run_general_agent(state["query"], state["messages"][:-1])  # history without latest
+    answer = run_general_agent(state["query"], state["messages"][:-1])
     return {"final_answer": answer}
 
 
@@ -158,11 +149,23 @@ def _build_main_graph():
     builder.add_edge("general_agent_node", END)
     builder.add_edge("follow_up_node", END)
 
-    # No checkpointer → fully stateless execution
     return builder.compile()
 
 
 main_graph = _build_main_graph()
+
+
+# --- Helper: Convert DB history dicts to LangChain messages -----------
+
+def _history_to_messages(history: list[dict]) -> list[BaseMessage]:
+    """Convert list of {"role": ..., "content": ...} dicts to BaseMessage objects."""
+    messages = []
+    for msg in history:
+        if msg["role"] == "user":
+            messages.append(HumanMessage(content=msg["content"]))
+        else:
+            messages.append(AIMessage(content=msg["content"]))
+    return messages
 
 
 # --- Public invoke function -------------------------------------------
@@ -171,20 +174,9 @@ main_graph = _build_main_graph()
 def invoke_graph(query: str, history: list[dict], user_id: str, conversation_id: str, has_documents: bool) -> dict:
     """
     Entry point for the FastAPI router (synchronous invocation).
-
-    history        : list of {"role": "user"|"assistant", "content": "..."} dicts
-    user_id        : UUID string from the decoded JWT — used for per-user doc isolation
-    conversation_id: UUID string representing the active chat thread
-    has_documents  : True only if the conversation has successfully ingested at least one document
     Returns {"answer": str, "route": str}
     """
-    messages: list[BaseMessage] = []
-    for msg in history:
-        if msg["role"] == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        else:
-            messages.append(AIMessage(content=msg["content"]))
-
+    messages = _history_to_messages(history)
     messages.append(HumanMessage(content=query))
 
     result = main_graph.invoke({
@@ -208,31 +200,18 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
     """
     Async generator for SSE streaming.
     Yields dicts with {"event": ..., "data": ...}
-    - agent_start: fired when routing decisions or department nodes start
-    - token      : fired as LLM tokens are generated
-    - done       : fired when graph execution completes
     """
     import asyncio
     from agents.subgraphs.general_agent import astream_general_agent
 
-    messages: list[BaseMessage] = []
-    for msg in history:
-        if msg["role"] == "user":
-            messages.append(HumanMessage(content=msg["content"]))
-        else:
-            messages.append(AIMessage(content=msg["content"]))
+    messages = _history_to_messages(history)
 
     # Step 1: CEO Router
     yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}
 
-    doc_context = (
-        "CONTEXT: The user has attached document(s) to this chat session. "
-        "Route to `knowledge_team` ONLY IF the user's question asks about, summarizes, or references the contents of the uploaded files. "
-        "For general questions, news, coding, math, or web search queries that do NOT depend on the uploaded files, route to `general` or `research_team`."
-        if has_documents
-        else "CONTEXT: No documents are attached to this conversation. Do NOT route to `knowledge_team`."
-    )
-    history_text = "\n".join(f"{m.type.upper()}: {m.content}" for m in messages)
+    doc_context = build_doc_context(has_documents)
+    history_text = format_history(messages, last_n=10)
+
     routing_messages = [
         SystemMessage(content=ROUTER_SYSTEM),
         HumanMessage(content=(
@@ -245,20 +224,18 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
     if route == "knowledge_team" and not has_documents:
         route = "general"
 
-    status_msg = "Thinking..."
-    if route == "knowledge_team":
-        status_msg = "Searching documents..."
-    elif route == "research_team":
-        status_msg = "Researching..."
-    elif route == "general":
-        status_msg = "Searching web..."
-
-    yield {"event": "agent_start", "data": {"agent": route, "message": status_msg}}
+    status_messages = {
+        "knowledge_team": "Searching documents...",
+        "research_team": "Researching...",
+        "general": "Searching web...",
+    }
+    yield {"event": "agent_start", "data": {"agent": route, "message": status_messages.get(route, "Thinking...")}}
 
     # Step 2: Department execution & token streaming
     if route == "general":
         async for token in astream_general_agent(query, messages, user_tz=user_tz):
             yield {"event": "token", "data": {"agent": "general", "content": token}}
+
     elif route == "follow_up":
         followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + messages + [HumanMessage(content=query)]
         async for chunk in _followup_llm.astream(followup_messages):
@@ -269,6 +246,7 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
                 for block in content:
                     if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
                         yield {"event": "token", "data": {"agent": "follow_up", "content": block["text"]}}
+
     elif route == "knowledge_team":
         from agents.subgraphs.knowledge_team import astream_knowledge_team
         async for evt in astream_knowledge_team(query, user_id=user_id, conversation_id=conversation_id, history=messages):
@@ -286,5 +264,3 @@ async def astream_graph_events(query: str, history: list[dict], user_id: str, co
                 yield {"event": "token", "data": {"agent": "research_team", "content": evt["content"]}}
 
     yield {"event": "done", "data": {"route": route}}
-
-

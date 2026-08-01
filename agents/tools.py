@@ -1,9 +1,12 @@
 """
 agents/tools.py
+
 All LangChain tool instances used across the multi-agent system.
-Initialized once at import time.
+Initialized once at import time — reused across all agent invocations.
 """
 import os
+import logging
+
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import Tool
 from langchain_openai import OpenAIEmbeddings
@@ -11,26 +14,51 @@ from langchain_qdrant import QdrantVectorStore, RetrievalMode
 
 from app.config import get_settings
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Set API keys in env (langchain picks them up automatically)
+# Set API keys in env (LangChain picks them up automatically)
 os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 
+# LangSmith tracing (optional — only set if API key is configured)
 if settings.langchain_api_key:
     os.environ["LANGCHAIN_TRACING_V2"] = settings.langchain_tracing_v2 or "true"
     os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
     os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project or "praxis-ai"
 
 
-# --- Tavily (general web + news) ----------------------------------------
-tavily_tool = TavilySearchResults(max_results=5, topic="general")
+# --- Tavily Web Search -------------------------------------------------
+# Two specialized tools: general web search + dedicated news search.
+# The general agent picks the right one based on the query intent.
+
+tavily_tool = TavilySearchResults(
+    max_results=5,
+    topic="general",
+    search_depth="advanced",        # deeper crawl for richer results
+    include_raw_content=True,       # full page text, not just snippets
+)
+
+tavily_news_tool = TavilySearchResults(
+    name="tavily_news_search",
+    max_results=5,
+    topic="news",                   # dedicated news index — much better for current events
+    search_depth="advanced",
+    include_raw_content=True,
+    description=(
+        "Search for the latest breaking news, current events, sports results, "
+        "live scores, recent announcements, and real-time updates. "
+        "Use this instead of general web search when the query is about "
+        "recent news, today's events, or anything time-sensitive."
+    ),
+)
 
 
 def get_current_time_str(user_tz: str = None) -> str:
     """Format current date and time localized to user's timezone if provided."""
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     if user_tz:
         try:
             tz = ZoneInfo(user_tz)
@@ -38,15 +66,18 @@ def get_current_time_str(user_tz: str = None) -> str:
             return f"{now.strftime('%A, %B %d, %Y %H:%M:%S')} ({user_tz} Time)"
         except Exception:
             pass
+
     now = datetime.now()
     return f"{now.strftime('%A, %B %d, %Y %H:%M:%S')}"
 
 
 # --- Arxiv (academic papers) -------------------------------------------
+
 def _search_arxiv(query: str) -> str:
     """Search arXiv academic papers safely across different SDK versions."""
     try:
         import arxiv
+
         if hasattr(arxiv, "Client"):
             client = arxiv.Client()
             search = arxiv.Search(query=query, max_results=3, sort_by=arxiv.SortCriterion.Relevance)
@@ -83,10 +114,12 @@ arxiv_tool = Tool(
 
 
 # --- Wikipedia (encyclopedic background) -------------------------------
+
 def _search_wikipedia(query: str) -> str:
     """Search Wikipedia for broad background, definitions, and history."""
     try:
         import httpx
+
         url = "https://en.wikipedia.org/w/api.php"
         params = {
             "action": "query",
@@ -98,8 +131,10 @@ def _search_wikipedia(query: str) -> str:
         resp = httpx.get(url, params=params, timeout=10)
         data = resp.json()
         search_results = data.get("query", {}).get("search", [])
+
         if not search_results:
             return "No Wikipedia articles found."
+
         snippets = []
         for item in search_results:
             title = item.get("title")
@@ -121,22 +156,25 @@ wikipedia_tool = Tool(
 
 
 # --- PubMed (medical & life sciences) ----------------------------------
+
 def _search_pubmed(query: str) -> str:
     """Search PubMed NCBI database for medical, biological, and life science papers."""
     try:
         import httpx
+
         esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": 3}
         resp = httpx.get(esearch_url, params=params, timeout=10)
         id_list = resp.json().get("esearchresult", {}).get("idlist", [])
+
         if not id_list:
             return "No PubMed medical articles found for this query."
-        
+
         esummary_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
         summary_params = {"db": "pubmed", "id": ",".join(id_list), "retmode": "json"}
         sum_resp = httpx.get(esummary_url, params=summary_params, timeout=10)
         sum_data = sum_resp.json().get("result", {})
-        
+
         results = []
         for pmid in id_list:
             item = sum_data.get(pmid, {})
@@ -159,11 +197,11 @@ pubmed_tool = Tool(
 )
 
 
-# --- Qdrant Hybrid Retriever (per-user) --------------------------------
+# --- Qdrant Hybrid Retriever (per-conversation) ------------------------
 
 # Query intents that need the ENTIRE document, not just top-k similar chunks.
 # Vector search fails for these because "summarize" has no semantically similar chunks.
-_GLOBAL_INTENT_KEYWORDS = {
+_GLOBAL_INTENT_KEYWORDS = frozenset({
     "summarize", "summary", "summarise", "summarisation", "summarization",
     "overview", "brief", "explain the document", "explain the file", "explain this",
     "what is this document", "what is this file", "what does this document",
@@ -171,7 +209,7 @@ _GLOBAL_INTENT_KEYWORDS = {
     "what is in the pdf", "what is in the file", "entire document", "whole document",
     "all sections", "table of contents", "introduction", "conclusion",
     "structure of", "outline of",
-}
+})
 
 
 def _is_global_query(query: str) -> bool:
@@ -192,12 +230,11 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
 
     The filter is applied at the Qdrant level, so only chunks where
     metadata.conversation_id == conversation_id are ever returned.
-    user_id is required as an additional security layer.
     """
     from langchain_qdrant import FastEmbedSparse
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-    # Match both root payload keys and metadata nested payload keys (langchain_qdrant payload structure)
+    # Match both root payload keys and metadata-nested payload keys
     user_filter = Filter(
         should=[
             Filter(
@@ -229,7 +266,6 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             vector_name="dense",
             sparse_vector_name="sparse",
         )
-        # Specific-query retriever — top-10 hybrid matches
         retriever = vector_store.as_retriever(
             search_kwargs={"k": 10, "filter": user_filter}
         )
@@ -238,10 +274,7 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
         error_text = str(exc)
 
         def _unavailable(_: str) -> str:
-            return (
-                "Knowledge base retrieval is unavailable: "
-                f"Could not connect to Qdrant collection: {error_text}"
-            )
+            return f"Knowledge base retrieval is unavailable: Could not connect to Qdrant collection: {error_text}"
 
         return Tool(
             name="knowledge_base_search",
@@ -250,37 +283,29 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
         )
 
     def _fetch_all_chunks() -> list:
-        """
-        Scroll ALL chunks for this conversation from Qdrant.
-        Used for global queries (summarize, overview, etc.) where we need
-        full-document context — vector similarity search is the wrong tool here.
-        Chunks are sorted by page number to preserve reading order.
-        """
+        """Scroll ALL chunks for this conversation from Qdrant (for global queries)."""
         all_chunks = []
         offset = None
         while True:
             results, offset = qdrant_client.scroll(
                 collection_name=settings.qdrant_collection_name,
                 scroll_filter=user_filter,
-                limit=100,          # batch size per Qdrant scroll request
+                limit=100,
                 offset=offset,
                 with_payload=True,
-                with_vectors=False, # text only — no need to decode vectors
+                with_vectors=False,
             )
             all_chunks.extend(results)
             if offset is None:
-                break               # Qdrant returns None offset when no more pages
+                break
         return all_chunks
 
     def _run_retriever(query: str) -> str:
         if _is_global_query(query):
-            # --- FULL DOCUMENT MODE ---
-            # Fetch every chunk stored for this conversation and sort by page order.
             raw_chunks = _fetch_all_chunks()
             if not raw_chunks:
                 return "No documents found in your knowledge base for this conversation."
 
-            # Sort by page number (ascending) to preserve reading order
             raw_chunks.sort(key=lambda p: (
                 p.payload.get("metadata", {}).get("page", p.payload.get("page", 0))
             ))
@@ -288,7 +313,7 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             parts = []
             for point in raw_chunks:
                 payload = point.payload
-                meta = payload.get("metadata", payload)  # handles both flat and nested
+                meta = payload.get("metadata", payload)
                 source = meta.get("source", "unknown").split("/")[-1].split("\\")[-1]
                 page = meta.get("page", "?")
                 text = payload.get("page_content", "")
@@ -296,10 +321,7 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
                     parts.append(f"[Source: {source} | Page {page}]\n{text}")
 
             return "\n\n---\n\n".join(parts)
-
         else:
-            # --- TARGETED SEARCH MODE ---
-            # Hybrid vector search for specific factual questions.
             docs = retriever.invoke(query)
             if not docs:
                 return "No relevant documents found in your knowledge base."
@@ -317,4 +339,3 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             "Input should be a search query string."
         ),
     )
-
