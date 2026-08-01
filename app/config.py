@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@praxisapp.online"
     resend_from_name: str = "Praxis"
-    app_base_url: str = "https://praxisapp.online"
+    # Context Limits
+    max_context_chars: int = 120000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

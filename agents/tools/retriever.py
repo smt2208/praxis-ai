@@ -118,6 +118,9 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
             ))
 
             parts = []
+            total_chars = 0
+            max_chars = settings.max_context_chars
+
             for point in raw_chunks:
                 payload = point.payload
                 meta = payload.get("metadata", payload)
@@ -125,7 +128,12 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
                 page = meta.get("page", "?")
                 text = payload.get("page_content", "")
                 if text.strip():
-                    parts.append(f"[Source: {source} | Page {page}]\n{text}")
+                    chunk_str = f"[Source: {source} | Page {page}]\n{text}"
+                    if total_chars + len(chunk_str) > max_chars:
+                        parts.append("\n[Note: Context ceiling reached. The above includes the core document sections.]")
+                        break
+                    parts.append(chunk_str)
+                    total_chars += len(chunk_str)
 
             return "\n\n---\n\n".join(parts)
         else:
