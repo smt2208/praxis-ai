@@ -13,8 +13,10 @@ from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
@@ -60,6 +62,37 @@ app = FastAPI(
 # Rate limiter — must be set before any route uses @limiter.limit()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+
+# --- Global User-Friendly Exception Handlers ---------------------------
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all for any unhandled internal server error across all endpoints/modules.
+    Logs the full exception traceback for developers, but returns a clean,
+    user-friendly error message to the client (no technical codes or stack traces).
+    """
+    logger.exception("[Unhandled Error] Path: %s | Error: %s", request.url.path, str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred while processing your request. Please try again or contact support."},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Sanitize HTTP exceptions so users always see clean, professional messages."""
+    detail = str(exc.detail) if exc.detail else "An error occurred."
+    if "Traceback" in detail or "Error code:" in detail or "rate_limit_exceeded" in detail:
+        logger.error("[HTTP Exception Sanitized] Path: %s | Raw Detail: %s", request.url.path, detail)
+        detail = "The service encountered a temporary issue while processing your request. Please try again in a moment."
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

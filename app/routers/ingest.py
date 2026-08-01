@@ -51,7 +51,8 @@ async def ingest(
         await mark_conversation_has_documents(pool, body.conversation_id)
         await add_conversation_document(pool, body.conversation_id, filename)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion error: {str(e)}")
+        logger.error("[ingestion] URL ingestion failed: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to ingest document from URL. Please check the URL and try again.")
 
     return IngestResponse(
         message="Document ingested successfully.",
@@ -104,7 +105,8 @@ async def ingest_file(
         await mark_conversation_has_documents(pool, conversation_id)
         await add_conversation_document(pool, conversation_id, filename)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion error: {str(e)}")
+        logger.error("[ingestion] File ingestion failed: %s", str(e))
+        raise HTTPException(status_code=500, detail="Failed to parse and store uploaded file. Please verify the file format and try again.")
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
