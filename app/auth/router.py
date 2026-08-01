@@ -82,9 +82,11 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
     # Send verification email (errors are caught inside — won't fail registration)
     send_verification_email(body.email, token)
 
-    tokens = await _issue_tokens(pool, user_id, body.email)
-    tokens.needs_verification = True   # tell UI to show "check your inbox" screen
-    return tokens
+    return TokenResponse(
+        access_token="",
+        refresh_token="",
+        needs_verification=True,
+    )
 
 
 @router.post("/verify-email", status_code=status.HTTP_200_OK)
@@ -175,6 +177,19 @@ async def logout(
 
 
 @router.get("/me", response_model=UserMeResponse)
-async def me(current_user: dict = Depends(get_current_user)):
-    """Return the currently authenticated user's info from the JWT payload."""
-    return UserMeResponse(user_id=current_user["id"], email=current_user["email"])
+async def me(
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """Return the currently authenticated user's info."""
+    user = await get_user_by_id(pool, current_user["id"])
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User no longer exists.",
+        )
+    return UserMeResponse(
+        user_id=str(user["id"]),
+        email=user["email"],
+        is_verified=user.get("is_verified", False),
+    )

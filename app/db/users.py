@@ -30,7 +30,7 @@ async def get_user_by_email(pool: asyncpg.Pool, email: str) -> dict | None:
 async def get_user_by_id(pool: asyncpg.Pool, user_id: str) -> dict | None:
     """Fetch a user row by UUID. Returns None if not found."""
     row = await pool.fetchrow(
-        "SELECT id, email FROM users WHERE id = $1",
+        "SELECT id, email, is_verified FROM users WHERE id = $1",
         user_id,
     )
     return dict(row) if row else None

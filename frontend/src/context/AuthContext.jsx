@@ -22,7 +22,11 @@ export const AuthProvider = ({ children }) => {
       if (token) {
         try {
           const userData = await api.getCurrentUser();
-          setUser(userData);
+          if (userData.is_verified === false) {
+            logoutLocally();
+          } else {
+            setUser(userData);
+          }
         } catch (err) {
           console.error('Failed to restore session:', err);
           logoutLocally();
@@ -72,10 +76,8 @@ export const AuthProvider = ({ children }) => {
       const data = await api.register(email, password);
 
       if (data.needs_verification) {
-        // Store tokens (needed for future requests) but don't log in yet.
-        // User must verify their email first before we let them into the app.
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('refresh_token', data.refresh_token);
+        // Clear any old session — user MUST verify email link before entering app
+        logoutLocally();
         return { success: true, needs_verification: true };
       }
 
