@@ -34,14 +34,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30        # 30 minutes — keep short
     refresh_token_expire_days: int = 7           # 7 days — stored in DB
 
-    # Supabase (optional — for future auth/REST integration)
-    supabase_url: str = ""
-    supabase_anon_key: str = ""
-
-    # LangSmith Tracing (optional)
-    langchain_tracing_v2: str = "true"
-    langchain_api_key: str = ""
-    langchain_project: str = "praxis-ai"
 
     # Email Verification (Resend)
     resend_api_key: str = "re_KJWEqzRN_Hdv9Q4yGT1Z9S5SyCz18vGAx"           # Get from https://resend.com — leave empty to skip sending
