@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import (
+from app.db import (
     get_history, create_conversation, get_conversations_by_user, delete_conversation,
     get_conversation_documents, verify_conversation_ownership,
     delete_conversation_qdrant_chunks,

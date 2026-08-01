@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # Email Verification (Resend)
     resend_api_key: str = ""
-    app_base_url: str = ""
+    app_base_url: str = "https://praxisapp.online"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

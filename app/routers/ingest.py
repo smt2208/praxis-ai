@@ -5,14 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import (
+from app.db import (
     mark_conversation_has_documents,
     add_conversation_document,
     verify_conversation_ownership,
     check_document_exists,
 )
 from app.schemas import IngestRequest, IngestResponse
-from scripts.ingestion import ingest_document
+from app.services.ingestion import ingest_document
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["Ingestion"])
 

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
-from app.database import init_db_pool
+from app.db import init_db_pool
 from app.auth.router import router as auth_router
 from app.routers.health import router as health_router
 from app.routers.conversations import router as conversations_router

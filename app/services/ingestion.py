@@ -1,5 +1,5 @@
 """
-ingestion.py
+app/services/ingestion.py
 
 Document ingestion pipeline:
   1. Download/load file from URL or path
@@ -64,22 +64,16 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
     Attempt zero-latency local text extraction for supported formats.
     Returns a list of page-level strings, or None if local extraction is
     not possible (e.g. scanned PDF with no embedded text, PPTX, etc.).
-
-    Why: LlamaParse makes a blocking cloud API call that takes 5-30 seconds.
-    For a plain-text PDF or DOCX with selectable text, local extraction
-    runs in milliseconds with no network round-trip.
     """
     ext = file_path.suffix.lower()
 
-    # Plain text / Markdown — trivially fast
     if ext in (".txt", ".md"):
         text = file_path.read_text(encoding="utf-8", errors="replace")
         return [text] if text.strip() else None
 
-    # PDF — use PyMuPDF (C-level, no network, extracts in <200ms)
     if ext == ".pdf":
         try:
-            import pymupdf  # pip install pymupdf
+            import pymupdf
             doc = pymupdf.open(str(file_path))
             pages = []
             total_pages = doc.page_count
@@ -88,16 +82,13 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
                 if text.strip():
                     pages.append(text)
             doc.close()
-            # If the PDF has selectable text on at least 60% of pages, use it.
-            # Otherwise it's likely a scanned image-PDF → fall through to LlamaParse.
             if pages and (total_pages == 0 or len(pages) / total_pages >= 0.6):
                 return pages
         except ImportError:
-            pass  # pymupdf not installed → fall through to LlamaParse
+            pass
         except Exception:
-            pass  # corrupt / encrypted → fall through to LlamaParse
+            pass
 
-    # DOCX — use python-docx (pure Python, no network)
     if ext == ".docx":
         try:
             from docx import Document as DocxDocument
@@ -109,29 +100,20 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
         except Exception:
             pass
 
-    # PPTX and other complex formats → let LlamaParse handle them
     return None
 
 
 # --- Step 2b: LlamaParse cloud extraction (fallback) -------------------
 
 def _llamaparse_extract(file_path: Path) -> list[str]:
-    """
-    Use LlamaParse with fast_mode=True to extract text from complex docs
-    (scanned PDFs, PPTX, multi-column layouts, tables, etc.).
-
-    fast_mode=True uses the lightweight 'Fast' tier:
-    - Skips heavy OCR / LLM-based layout reconstruction.
-    - Dramatically faster for text-based documents.
-    - Still handles tables and headings better than naive extraction.
-    """
+    """Use LlamaParse with fast_mode=True to extract text from complex docs."""
     from llama_parse import LlamaParse
     parser = LlamaParse(
         api_key=settings.llama_cloud_api_key,
         result_type="markdown",
-        fast_mode=True,      # Use the Fast tier — skips heavy OCR/LLM layout pass
+        fast_mode=True,
         verbose=False,
-        num_workers=4,       # Parallelise multi-page jobs server-side
+        num_workers=4,
     )
     documents = parser.load_data(str(file_path))
     return [doc.text for doc in documents if doc.text.strip()]
@@ -144,8 +126,7 @@ def parse_document(file_path: Path) -> list[str]:
     """
     Smart two-path parser:
       1. Try fast local extraction first (milliseconds, no API cost).
-      2. Fall back to LlamaParse (seconds) only when local extraction fails
-         or returns no text (scanned images, complex PPTX, etc.).
+      2. Fall back to LlamaParse (seconds) only when local extraction fails.
     """
     pages = _try_fast_local_extract(file_path)
     if pages:
@@ -160,10 +141,7 @@ def parse_document(file_path: Path) -> list[str]:
 
 @traceable(name="Chunk Texts", run_type="chain")
 def chunk_texts(pages: list[str], source: str, user_id: str, conversation_id: str) -> list[Document]:
-    """
-    Split page texts into overlapping chunks.
-    Each chunk carries source + user_id + conversation_id metadata for per-conversation isolation in Qdrant.
-    """
+    """Split page texts into overlapping chunks with per-conversation metadata."""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=800,
         chunk_overlap=100,
@@ -184,10 +162,7 @@ def chunk_texts(pages: list[str], source: str, user_id: str, conversation_id: st
 
 @traceable(name="Store Vector Documents", run_type="retriever")
 def store_documents(docs: list[Document], collection_name: str) -> int:
-    """
-    Generate hybrid embeddings and upsert into Qdrant.
-    Returns the number of documents stored.
-    """
+    """Generate hybrid embeddings and upsert into Qdrant. Returns count stored."""
     QdrantVectorStore.from_documents(
         documents=docs,
         embedding=OpenAIEmbeddings(
@@ -201,7 +176,7 @@ def store_documents(docs: list[Document], collection_name: str) -> int:
         retrieval_mode=RetrievalMode.HYBRID,
         vector_name="dense",
         sparse_vector_name="sparse",
-        force_recreate=False,   # Never wipe existing data
+        force_recreate=False,
     )
     return len(docs)
 
@@ -209,19 +184,14 @@ def store_documents(docs: list[Document], collection_name: str) -> int:
 # --- Main pipeline entrypoint -----------------------------------------
 
 @traceable(name="Ingest Document Pipeline", run_type="chain")
-async def ingest_document(
-    source_url: str,
-    user_id: str,
-    conversation_id: str,
-) -> int:
+async def ingest_document(source_url: str, user_id: str, conversation_id: str) -> int:
     """
     Full pipeline: download → parse → chunk → embed → store.
-    Every chunk is tagged with user_id and conversation_id so retrieval can filter per-conversation.
+    Every chunk is tagged with user_id and conversation_id for per-conversation isolation.
     Returns the number of chunks stored.
     """
     target_collection = settings.qdrant_collection_name
 
-    # Download file
     is_remote = source_url.startswith("http://") or source_url.startswith("https://")
     if is_remote:
         file_path = await download_file(source_url)
@@ -233,19 +203,16 @@ async def ingest_document(
         cleanup = False
 
     try:
-        # Parse (blocking network/CPU call → send to thread)
         logger.info("[ingestion] Parsing: %s", file_path.name)
         pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
             raise ValueError("Parser returned no text from the document.")
 
-        # Chunk (CPU bound → send to thread)
         docs = await asyncio.to_thread(
             chunk_texts, pages, source_url, user_id, conversation_id
         )
         logger.info("[ingestion] Created %d chunks from %d pages.", len(docs), len(pages))
 
-        # Store (blocking network calls to OpenAI & Qdrant → send to thread)
         count = await asyncio.to_thread(store_documents, docs, target_collection)
         logger.info("[ingestion] Stored %d chunks in '%s' for user '%s'.", count, target_collection, user_id)
         return count

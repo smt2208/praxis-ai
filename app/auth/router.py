@@ -23,7 +23,7 @@ from app.auth.security import (
 )
 from app.auth.dependencies import get_current_user
 from app.dependencies import get_pool
-from app.database import (
+from app.db import (
     create_user, get_user_by_email, get_user_by_id,
     save_refresh_token, get_refresh_token,
     delete_refresh_token, delete_all_user_refresh_tokens,

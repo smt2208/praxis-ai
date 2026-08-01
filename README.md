@@ -60,13 +60,14 @@ flowchart TD
 ## ✨ Key Features
 
 - **Real-Time SSE Streaming (`/api/v1/chat/stream`):** Live token-by-token text streaming and animated step-by-step progress status updates (*"Refining query context..."* → *"Searching vector index..."* → *"Synthesizing response..."*).
+- **Modular Production Architecture:** Clean separation of concerns with domain-based database packages (`app/db/`), request validation schemas (`app/schemas/`), dedicated business services (`app/services/`), and pluggable tool packages (`agents/tools/`).
 - **Enterprise Document RAG Pipeline:**
   - **Conversational Query De-contextualization:** Resolves ambiguous pronouns (*"it"*, *"this"*, *"section 2"*) against chat history into explicit search queries before vector lookup.
   - **Adaptive Web Search Gating:** Evaluates document context completeness first—skipping web search when internal documents contain complete information (50% speedup, zero web noise).
   - **Grounded Citations:** Formats responses with explicit document source attributions (`[Source: document.pdf]`).
-- **Multi-Domain Deep Research Team:** Multi-step iterative research planner executing multi-query searches across **ArXiv** (CS/AI), **PubMed** (Biomedical), **Wikipedia**, and **Tavily Web Search**.
+- **Multi-Domain Deep Research Team:** Multi-step iterative research planner executing multi-query searches across **ArXiv** (CS/AI), **PubMed** (Biomedical), **Wikipedia**, and **Tavily Web & News Search**.
 - **Stateless Execution Model:** Stateless LangGraph architecture backed by PostgreSQL for infinite horizontal scaling across cloud instances.
-- **Security & Multi-Tenant Data Isolation:** JWT authentication (`HS256`), password hashing (`bcrypt`), endpoint rate-limiting (`slowapi`), 20 MB file upload limit, file type validation, and strict database conversation ownership verification.
+- **Security & Multi-Tenant Data Isolation:** JWT authentication (`HS256`), password hashing (`bcrypt`), email verification tokens, endpoint rate-limiting (`slowapi`), 20 MB file upload limit, file type validation, and strict database conversation ownership verification.
 - **Modern Responsive UI:** Built with Vite + React 18, featuring brand logo identity, dark glassmorphism aesthetic, mobile off-canvas drawer sidebar, and fail-safe HTTP fallback.
 
 ---
@@ -86,6 +87,8 @@ erDiagram
         uuid id PK
         varchar email UK
         text hashed_password
+        boolean is_verified
+        text verification_token
         timestamp created_at
     }
 
@@ -126,7 +129,7 @@ erDiagram
 
 | Table Name | Primary Purpose | Key Columns & Operational Role |
 |---|---|---|
-| `users` | Stores registered user accounts | `id` (UUID PK), `email` (Unique), `hashed_password` (Bcrypt hash). Used for authentication and data ownership isolation. |
+| `users` | Stores registered user accounts | `id` (UUID PK), `email` (Unique), `hashed_password` (Bcrypt hash), `is_verified` (Email status). Used for authentication and data ownership isolation. |
 | `conversations` | Manages chat threads | `id` (UUID PK), `user_id` (FK → users.id), `title` (auto-generated 3-5 word summary), `has_documents` (Boolean gate used by CEO router). |
 | `messages` | Persists conversation message history | `id` (UUID PK), `conversation_id` (FK → conversations.id), `role` (`user`, `assistant`, `system`), `content` (Markdown text). Injected per-request for stateless execution. |
 | `refresh_tokens` | Multi-session auth & token rotation | `id` (UUID PK), `user_id` (FK → users.id), `token` (64-char opaque secret), `expires_at` (7-day expiry). Enables instant session revocation. |
@@ -140,11 +143,29 @@ erDiagram
 praxis-ai/
 ├── app/
 │   ├── main.py             # FastAPI entry point, CORS & middleware
-│   ├── database.py         # PostgreSQL connection pool & DDL schema
+│   ├── config.py           # Environment settings & DEFAULT_MODEL
 │   ├── dependencies.py     # Shared asyncpg pool dependency
-│   ├── schemas.py          # Pydantic request/response validation models
-│   ├── config.py           # Environment settings (pydantic-settings)
-│   ├── routers/            # Modular API Routers
+│   ├── email.py            # Verification email integration
+│   ├── db/                 # Modular Database Package
+│   │   ├── connection.py   # Pool lifecycle & DDL schema
+│   │   ├── users.py        # User CRUD & email verification
+│   │   ├── conversations.py# Conversation CRUD & title updates
+│   │   ├── messages.py     # Message history read & write
+│   │   ├── documents.py    # Document tracking & Qdrant cleanup
+│   │   ├── refresh_tokens.py# Refresh token lifecycle & revocation
+│   │   └── __init__.py     # Database export hub
+│   ├── schemas/            # Pydantic Schemas Package
+│   │   ├── auth.py         # Auth DTO models
+│   │   ├── chat.py         # Chat & message DTO models
+│   │   ├── conversations.py# Conversation DTO models
+│   │   ├── ingest.py       # Ingestion DTO models
+│   │   ├── health.py       # Health DTO models
+│   │   └── __init__.py     # Schemas export hub
+│   ├── services/           # Business Logic Layer
+│   │   ├── chat.py         # Auto-title generation service
+│   │   ├── ingestion.py    # Document ingestion pipeline
+│   │   └── __init__.py     # Services export hub
+│   ├── routers/            # Thin HTTP APIRouters
 │   │   ├── chat.py         # Sync (/chat) & SSE Streaming (/chat/stream) endpoints
 │   │   ├── conversations.py# Conversation history & document endpoints
 │   │   ├── ingest.py       # File upload & document ingestion router
@@ -157,11 +178,18 @@ praxis-ai/
 │       └── rate_limit.py   # Slowapi rate-limiting configuration
 ├── agents/
 │   ├── orchestrator.py     # CEO router node & SSE event stream generator
-│   ├── tools.py            # Hybrid Qdrant retriever, Tavily, arXiv, PubMed tools
+│   ├── utils.py            # Shared agent utilities (formatting, prompts)
+│   ├── tools/              # Pluggable Tools Package
+│   │   ├── web_search.py   # Tavily web & news search
+│   │   ├── academic.py     # arXiv & PubMed search
+│   │   ├── encyclopedia.py # Wikipedia search
+│   │   ├── retriever.py    # Hybrid Qdrant retriever
+│   │   ├── time_utils.py   # Timezone-aware date/time helper
+│   │   └── __init__.py     # Tools export hub
 │   └── subgraphs/
 │       ├── knowledge_team.py # Enterprise RAG pipeline (De-contextualization, Gated Web, Citations)
 │       ├── research_team.py  # Deep multi-step academic research team
-│       └── general_agent.py  # ReAct web search agent
+│       └── general_agent.py  # ReAct web & news search agent
 ├── prompts/
 │   ├── orchestrator_prompts.py
 │   ├── knowledge_prompts.py
