@@ -70,10 +70,18 @@ export const AuthProvider = ({ children }) => {
     setAuthError('');
     try {
       const data = await api.register(email, password);
+
+      if (data.needs_verification) {
+        // Store tokens (needed for future requests) but don't log in yet.
+        // User must verify their email first before we let them into the app.
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        return { success: true, needs_verification: true };
+      }
+
+      // Verification not required (should not happen currently, but defensive)
       localStorage.setItem('access_token', data.access_token);
       localStorage.setItem('refresh_token', data.refresh_token);
-
-      // Fetch user profile
       const userData = await api.getCurrentUser();
       setUser(userData);
       const name = userData.email ? userData.email.split('@')[0] : 'user';
@@ -85,6 +93,7 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: msg };
     }
   };
+
 
   const logout = async (logoutAll = false) => {
     const refreshToken = localStorage.getItem('refresh_token');

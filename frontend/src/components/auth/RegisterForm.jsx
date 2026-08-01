@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Mail } from 'lucide-react';
 
 export const RegisterForm = ({ onSuccess }) => {
   const { register } = useAuth();
@@ -12,6 +12,8 @@ export const RegisterForm = ({ onSuccess }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   const validate = () => {
     const errs = {};
@@ -55,12 +57,52 @@ export const RegisterForm = ({ onSuccess }) => {
     setLoading(false);
 
     if (res.success) {
-      if (onSuccess) onSuccess();
+      if (res.needs_verification) {
+        // Show "check your inbox" state instead of logging in
+        setRegisteredEmail(formData.email);
+        setNeedsVerification(true);
+      } else {
+        if (onSuccess) onSuccess();
+      }
     } else {
       setServerError(res.error);
     }
   };
 
+  // ── Check your inbox state ──
+  if (needsVerification) {
+    return (
+      <div style={{ textAlign: 'center', padding: '16px 0' }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          background: 'rgba(99, 102, 241, 0.15)',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 20px',
+        }}>
+          <Mail size={28} style={{ color: '#818cf8' }} />
+        </div>
+        <h3 style={{ color: '#e2e8f0', marginBottom: '10px', fontSize: '18px' }}>
+          Check your inbox!
+        </h3>
+        <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: 1.6, marginBottom: '6px' }}>
+          We sent a verification link to:
+        </p>
+        <p style={{ color: '#818cf8', fontWeight: 600, fontSize: '15px', marginBottom: '20px' }}>
+          {registeredEmail}
+        </p>
+        <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.6 }}>
+          Click the link in the email to activate your account.<br />
+          The link expires in 24 hours.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Registration form ──
   return (
     <form onSubmit={handleSubmit} noValidate>
       {serverError && (

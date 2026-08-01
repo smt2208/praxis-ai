@@ -2,16 +2,18 @@
 app/auth/router.py
 
 Authentication endpoints:
-  POST /api/v1/auth/register  → create account, return access + refresh token
-  POST /api/v1/auth/login     → verify credentials, return access + refresh token
-  POST /api/v1/auth/refresh   → exchange refresh token for a new access token
-  POST /api/v1/auth/logout    → revoke refresh token(s)
-  GET  /api/v1/auth/me        → return current user info (protected)
+  POST /api/v1/auth/register       → create account, send verification email, return tokens
+  POST /api/v1/auth/login          → verify credentials + email, return access + refresh token
+  POST /api/v1/auth/verify-email   → activate account from email link token
+  POST /api/v1/auth/refresh        → exchange refresh token for a new access token
+  POST /api/v1/auth/logout         → revoke refresh token(s)
+  GET  /api/v1/auth/me             → return current user info (protected)
 
 Token lifecycle:
   - Access token  (30 min JWT)  → sent in Authorization: Bearer header on every request
   - Refresh token (7 day opaque) → sent only to /refresh to get a new access token
 """
+import secrets
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -25,12 +27,14 @@ from app.database import (
     create_user, get_user_by_email, get_user_by_id,
     save_refresh_token, get_refresh_token,
     delete_refresh_token, delete_all_user_refresh_tokens,
+    set_verification_token, verify_email_token,
 )
 from app.schemas import (
     RegisterRequest, LoginRequest, RefreshRequest, LogoutRequest,
-    TokenResponse, UserMeResponse,
+    TokenResponse, UserMeResponse, VerifyEmailRequest,
 )
 from app.middleware.rate_limit import limiter
+from app.email import send_verification_email
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
@@ -58,7 +62,8 @@ async def _issue_tokens(pool: asyncpg.Pool, user_id: str, email: str) -> TokenRe
 async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool = Depends(get_pool)):
     """
     Register a new user account.
-    Returns both tokens so the client is immediately authenticated.
+    Sends a verification email. Returns tokens so the client can access
+    the app immediately, but the email gate is enforced on login.
     """
     existing = await get_user_by_email(pool, body.email)
     if existing:
@@ -66,9 +71,35 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists.",
         )
+
     hashed = hash_password(body.password)
     user_id = await create_user(pool, body.email, hashed)
-    return await _issue_tokens(pool, user_id, body.email)
+
+    # Generate and store a secure one-time verification token
+    token = secrets.token_urlsafe(32)
+    await set_verification_token(pool, user_id, token)
+
+    # Send verification email (errors are caught inside — won't fail registration)
+    send_verification_email(body.email, token)
+
+    tokens = await _issue_tokens(pool, user_id, body.email)
+    tokens.needs_verification = True   # tell UI to show "check your inbox" screen
+    return tokens
+
+
+@router.post("/verify-email", status_code=status.HTTP_200_OK)
+async def verify_email(body: VerifyEmailRequest, pool: asyncpg.Pool = Depends(get_pool)):
+    """
+    Activate a user account using the token from the verification email link.
+    The token is consumed (set to NULL) on first use — cannot be reused.
+    """
+    verified = await verify_email_token(pool, body.token)
+    if not verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification link is invalid or has already been used.",
+        )
+    return {"message": "Email verified successfully. You can now log in."}
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -76,6 +107,7 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
 async def login(request: Request, body: LoginRequest, pool: asyncpg.Pool = Depends(get_pool)):
     """
     Authenticate with email + password.
+    Blocks login if the email has not been verified yet.
     Returns both tokens on success.
     """
     user = await get_user_by_email(pool, body.email)
@@ -84,6 +116,13 @@ async def login(request: Request, body: LoginRequest, pool: asyncpg.Pool = Depen
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password.",
         )
+
+    if not user["is_verified"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
+        )
+
     return await _issue_tokens(pool, str(user["id"]), user["email"])
 
 
@@ -139,4 +178,3 @@ async def logout(
 async def me(current_user: dict = Depends(get_current_user)):
     """Return the currently authenticated user's info from the JWT payload."""
     return UserMeResponse(user_id=current_user["id"], email=current_user["email"])
-

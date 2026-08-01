@@ -20,6 +20,7 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    needs_verification: bool = False  # True right after registration — tells UI to show "check inbox"
 
 class RefreshRequest(BaseModel):
     """Send the stored refresh_token to get a new access_token."""
@@ -33,6 +34,11 @@ class LogoutRequest(BaseModel):
 class UserMeResponse(BaseModel):
     user_id: str
     email: str
+    is_verified: bool = False
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
 
 
 # -----------------------------------------------------------------------

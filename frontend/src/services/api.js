@@ -115,6 +115,11 @@ export const api = {
     method: 'GET',
   }),
 
+  verifyEmail: (token) => request('/api/v1/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  }),
+
   // Conversations
   getConversations: () => request('/api/v1/conversations', {
     method: 'GET',

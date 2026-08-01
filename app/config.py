@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     langchain_api_key: str = ""
     langchain_project: str = "praxis-ai"
 
+    # Email Verification (Resend)
+    resend_api_key: str = "re_KJWEqzRN_Hdv9Q4yGT1Z9S5SyCz18vGAx"           # Get from https://resend.com — leave empty to skip sending
+    app_base_url: str = "https://praxis-ai-nine.vercel.app"  # Frontend origin for email verification link
+
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

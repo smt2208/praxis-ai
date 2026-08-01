@@ -56,6 +56,16 @@ _ADD_CONVERSATION_HAS_DOCUMENTS_COL = """
 ALTER TABLE conversations ADD COLUMN IF NOT EXISTS has_documents BOOLEAN NOT NULL DEFAULT FALSE;
 """
 
+# Email verification columns — safe to run on every startup (idempotent)
+_ADD_EMAIL_VERIFICATION_COLS = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified       BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token TEXT;
+
+-- Auto-verify legacy users created before email verification was added
+-- (legacy users have verification_token IS NULL and is_verified = FALSE)
+UPDATE users SET is_verified = TRUE WHERE verification_token IS NULL AND is_verified = FALSE;
+"""
+
 # --- Pool lifecycle ----------------------------------------------------
 
 async def init_db_pool(settings: Settings) -> asyncpg.Pool:
@@ -72,8 +82,10 @@ async def init_db_pool(settings: Settings) -> asyncpg.Pool:
     async with pool.acquire() as conn:
         await conn.execute(_CREATE_TABLES_SQL)
         await conn.execute(_ADD_HASHED_PASSWORD_COL)
-        await conn.execute(_ADD_CONVERSATION_HAS_DOCUMENTS_COL)  # idempotent — safe on every startup
+        await conn.execute(_ADD_CONVERSATION_HAS_DOCUMENTS_COL)
+        await conn.execute(_ADD_EMAIL_VERIFICATION_COLS)  # idempotent — safe on every startup
     return pool
+
 
 
 # --- Query helpers -----------------------------------------------------
@@ -223,10 +235,35 @@ async def create_user(pool: asyncpg.Pool, email: str, hashed_password: str) -> s
 async def get_user_by_email(pool: asyncpg.Pool, email: str) -> dict | None:
     """Fetch a user row by email. Returns None if not found."""
     row = await pool.fetchrow(
-        "SELECT id, email, hashed_password FROM users WHERE email = $1",
+        "SELECT id, email, hashed_password, is_verified FROM users WHERE email = $1",
         email,
     )
     return dict(row) if row else None
+
+
+async def set_verification_token(pool: asyncpg.Pool, user_id: str, token: str) -> None:
+    """Store a verification token on the user row after registration."""
+    await pool.execute(
+        "UPDATE users SET verification_token = $1 WHERE id = $2",
+        token, user_id,
+    )
+
+
+async def verify_email_token(pool: asyncpg.Pool, token: str) -> bool:
+    """
+    Mark the user as verified if the token matches and hasn't been used.
+    Returns True if a user was verified, False if the token is invalid or already used.
+    """
+    result = await pool.execute(
+        """
+        UPDATE users
+        SET is_verified = TRUE, verification_token = NULL
+        WHERE verification_token = $1
+          AND is_verified = FALSE
+        """,
+        token,
+    )
+    return result == "UPDATE 1"
 
 
 async def get_user_by_id(pool: asyncpg.Pool, user_id: str) -> dict | None:

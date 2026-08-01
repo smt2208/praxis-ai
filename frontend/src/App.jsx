@@ -6,6 +6,7 @@ import { ArchitectureShowcase } from './components/landing/ArchitectureShowcase'
 import { FeatureGrid } from './components/landing/FeatureGrid';
 import { Footer } from './components/landing/Footer';
 import { AuthModal } from './components/auth/AuthModal';
+import { VerifyEmailPage } from './components/auth/VerifyEmailPage';
 import { Sidebar } from './components/chat/Sidebar';
 import { ChatWindow } from './components/chat/ChatWindow';
 import { api } from './services/api';
@@ -15,6 +16,8 @@ import './styles/landing.css';
 import './styles/auth.css';
 import './styles/chat.css';
 
+// Simple path-based routing — no router library needed
+const currentPath = window.location.pathname;
 const MainLayout = () => {
   const { isAuthenticated, loading } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -142,6 +145,18 @@ const MainLayout = () => {
 };
 
 export default function App() {
+  // Render the email verification page for users arriving from the email link
+  if (currentPath === '/verify-email') {
+    return (
+      <VerifyEmailPage
+        onGoToLogin={() => {
+          window.history.pushState({}, '', '/');
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
   return (
     <AuthProvider>
       <MainLayout />
