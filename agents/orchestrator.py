@@ -51,7 +51,7 @@ class OrchestratorState(TypedDict):
 
 def ceo_node(state: OrchestratorState) -> dict:
     """Analyze the conversation and route to the correct department."""
-    history_text = format_history(state["messages"][:-1], last_n=10)
+    history_text = format_history(state["messages"][:-1], last_n=20)
     doc_context = build_doc_context(state["has_documents"])
     route = resolve_route(state["query"], history_text, doc_context, state["has_documents"])
     return {"route": route}
@@ -82,7 +82,8 @@ def general_agent_node(state: OrchestratorState) -> dict:
 
 def follow_up_node(state: OrchestratorState) -> dict:
     """Handles conversational replies, rephrasing, or summaries using history."""
-    messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + list(state["messages"])
+    recent_msgs = list(state["messages"][-10:])
+    messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + recent_msgs
     response = _followup_llm.invoke(messages)
     return {"final_answer": response.content}
 
@@ -214,7 +215,7 @@ async def astream_graph_events(
     yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}
 
     doc_context = build_doc_context(has_documents)
-    history_text = format_history(messages, last_n=10)
+    history_text = format_history(messages, last_n=20)
     route = await asyncio.to_thread(resolve_route, query, history_text, doc_context, has_documents)
 
     _status = {
@@ -230,7 +231,8 @@ async def astream_graph_events(
             yield {"event": "token", "data": {"agent": "general", "content": token}}
 
     elif route == "follow_up":
-        followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + messages + [HumanMessage(content=query)]
+        recent_msgs = messages[-10:] if len(messages) > 10 else messages
+        followup_messages = [SystemMessage(content=FOLLOW_UP_SYSTEM)] + recent_msgs + [HumanMessage(content=query)]
         async for chunk in _followup_llm.astream(followup_messages):
             content = chunk.content
             if isinstance(content, str) and content:

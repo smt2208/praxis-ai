@@ -13,6 +13,7 @@ Token lifecycle:
   - Access token  (30 min JWT)  → sent in Authorization: Bearer header on every request
   - Refresh token (7 day opaque) → sent only to /refresh to get a new access token
 """
+import asyncio
 import secrets
 import asyncpg
 from datetime import datetime, timedelta, timezone
@@ -83,8 +84,8 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
     token = secrets.token_urlsafe(32)
     await set_verification_token(pool, user_id, token)
 
-    # Send verification email (errors are caught inside — won't fail registration)
-    send_verification_email(body.email, token)
+    # Send verification email in background thread (non-blocking)
+    asyncio.create_task(asyncio.to_thread(send_verification_email, body.email, token))
 
     return TokenResponse(
         access_token="",
@@ -241,10 +242,11 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, pool: a
     user = await get_user_by_email(pool, body.email)
     if user:
         token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30)
         stored = await set_password_reset_token(pool, body.email, token, expires_at)
         if stored:
-            send_password_reset_email(body.email, token)
+            # Send password reset email in background thread (non-blocking)
+            asyncio.create_task(asyncio.to_thread(send_password_reset_email, body.email, token))
 
     # Always return the same message to prevent email enumeration
     return {"message": "If an account exists for this email, a password reset link has been sent."}

@@ -89,7 +89,7 @@ async def get_user_by_reset_token(pool: asyncpg.Pool, token: str) -> dict | None
         SELECT id, email
         FROM users
         WHERE password_reset_token = $1
-          AND password_reset_expires_at > NOW()
+          AND password_reset_expires_at > (NOW() AT TIME ZONE 'utc')
         """,
         token,
     )
@@ -110,7 +110,7 @@ async def reset_user_password(
             password_reset_token = NULL,
             password_reset_expires_at = NULL
         WHERE password_reset_token = $2
-          AND password_reset_expires_at > NOW()
+          AND password_reset_expires_at > (NOW() AT TIME ZONE 'utc')
         """,
         new_hashed_password, token,
     )

@@ -28,6 +28,7 @@ from app.routers.conversations import router as conversations_router
 from app.routers.chat import router as chat_router
 from app.routers.ingest import router as ingest_router
 from app.routers.memory import router as memory_router
+from app.services.warmup import warmup_all_services
 from app.middleware.rate_limit import limiter, rate_limit_handler
 
 settings = get_settings()
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logger.info("[startup] Database ready. Tables ensured.")
 
     logger.info("[startup] LangGraph orchestrator compiled.")
+
+    # Pre-warm FastEmbed BM25 sparse model and Mem0 memory instance to eliminate first-query cold start latency
+    await warmup_all_services()
 
     yield
 

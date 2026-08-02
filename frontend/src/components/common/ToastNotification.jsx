@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, CheckCircle2, LogOut, Info } from 'lucide-react';
+import { Sparkles, CheckCircle2, LogOut, Info, X } from 'lucide-react';
 
 export const ToastNotification = ({ toast, onClose }) => {
   if (!toast) return null;
@@ -19,9 +19,32 @@ export const ToastNotification = ({ toast, onClose }) => {
   };
 
   return (
-    <div className="toast-notification" onClick={onClose}>
-      {getIcon()}
-      <span>{toast.message}</span>
+    <div className="toast-notification" onClick={onClose} title="Click to dismiss">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {getIcon()}
+        <span>{toast.message}</span>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+          padding: '2px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginLeft: '8px',
+          borderRadius: '50%',
+        }}
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 };

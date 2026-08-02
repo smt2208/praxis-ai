@@ -111,9 +111,10 @@ export const SettingsModal = ({ isOpen, onClose }) => {
         </div>
 
         {/* Modal Body with Left Navigation Sidebar */}
-        <div style={{ display: 'flex', minHeight: '380px' }}>
+        <div className="settings-modal-body" style={{ display: 'flex', minHeight: '380px' }}>
           {/* Tab Sidebar */}
           <div
+            className="settings-modal-tabs"
             style={{
               width: '180px',
               borderRight: '1px solid var(--border-color)',
@@ -182,7 +183,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
                 <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {/* Name & Age Row */}
-                  <div style={{ display: 'flex', gap: '12px' }}>
+                  <div className="settings-form-row" style={{ display: 'flex', gap: '12px' }}>
                     <div className="input-group" style={{ flex: 2 }}>
                       <label className="input-label" htmlFor="settings-name">
                         What should I call you?
@@ -233,7 +234,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   </div>
 
                   {/* Location Row: City, State, Country */}
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div className="settings-form-row" style={{ display: 'flex', gap: '10px' }}>
                     <div className="input-group" style={{ flex: 1 }}>
                       <label className="input-label" htmlFor="settings-city">
                         City
