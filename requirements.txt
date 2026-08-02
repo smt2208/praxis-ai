@@ -54,3 +54,6 @@ slowapi>=0.1.9
 
 # Email (Resend SDK — for account email verification)
 resend>=2.0.0
+
+# Long-Term Memory (Mem0 — self-hosted with Qdrant)
+mem0ai>=2.0.14

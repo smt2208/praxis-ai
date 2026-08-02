@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     # Context Limits
     max_context_chars: int = 120000
 
+    # Mem0 Long-Term Memory
+    mem0_collection_name: str = "praxis_memories"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 

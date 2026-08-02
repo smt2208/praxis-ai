@@ -60,8 +60,8 @@ export const AuthProvider = ({ children }) => {
       // Fetch user profile
       const userData = await api.getCurrentUser();
       setUser(userData);
-      const name = userData.email ? userData.email.split('@')[0] : 'user';
-      showToast(`✨ Welcome back, ${name}! Workspace ready.`, 'login');
+      const displayName = userData.full_name || userData.email?.split('@')[0] || 'user';
+      showToast(`✨ Welcome back, ${displayName}! Workspace ready.`, 'login');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Login failed';
@@ -70,10 +70,10 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (email, password) => {
+  const register = async (email, password, fullName = '') => {
     setAuthError('');
     try {
-      const data = await api.register(email, password);
+      const data = await api.register(email, password, fullName);
 
       if (data.needs_verification) {
         // Clear any old session — user MUST verify email link before entering app
@@ -86,8 +86,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('refresh_token', data.refresh_token);
       const userData = await api.getCurrentUser();
       setUser(userData);
-      const name = userData.email ? userData.email.split('@')[0] : 'user';
-      showToast(`🚀 Welcome to Praxis, ${name}! Your AI workspace is ready.`, 'register');
+      const displayName = userData.full_name || userData.email?.split('@')[0] || 'user';
+      showToast(`🚀 Welcome to Praxis, ${displayName}! Your AI workspace is ready.`, 'register');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Registration failed';
@@ -110,6 +110,44 @@ export const AuthProvider = ({ children }) => {
     showToast('👋 Logged out successfully. See you soon!', 'logout');
   };
 
+  const updateProfile = async (profileData) => {
+    try {
+      await api.updateProfile(profileData);
+      setUser((prev) => (prev ? { ...prev, ...profileData } : prev));
+      showToast('Profile updated successfully.');
+      return { success: true };
+    } catch (err) {
+      const msg = err.message || 'Failed to update profile';
+      showToast(msg, 'error');
+      return { success: false, error: msg };
+    }
+  };
+
+  const toggleMemory = async (enabled) => {
+    try {
+      await api.toggleMemory(enabled);
+      setUser((prev) => (prev ? { ...prev, memory_enabled: enabled } : prev));
+      showToast(enabled ? 'Memory enabled.' : 'Memory disabled.');
+      return { success: true };
+    } catch (err) {
+      const msg = err.message || 'Failed to update memory setting';
+      showToast(msg, 'error');
+      return { success: false, error: msg };
+    }
+  };
+
+  const clearMemory = async () => {
+    try {
+      await api.clearMemory();
+      showToast('All long-term memories cleared.');
+      return { success: true };
+    } catch (err) {
+      const msg = err.message || 'Failed to clear memory';
+      showToast(msg, 'error');
+      return { success: false, error: msg };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -121,6 +159,9 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        updateProfile,
+        toggleMemory,
+        clearMemory,
       }}
     >
       <ToastNotification toast={toast} onClose={() => setToast(null)} />

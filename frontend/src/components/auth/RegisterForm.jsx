@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { UserPlus, Mail } from 'lucide-react';
+import { UserPlus, Mail, User } from 'lucide-react';
 
 export const RegisterForm = ({ onSuccess }) => {
   const { register } = useAuth();
   const [formData, setFormData] = useState({
+    fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -53,7 +54,7 @@ export const RegisterForm = ({ onSuccess }) => {
     setLoading(true);
     setServerError('');
 
-    const res = await register(formData.email, formData.password);
+    const res = await register(formData.email, formData.password, formData.fullName.trim());
     setLoading(false);
 
     if (res.success) {
@@ -110,6 +111,22 @@ export const RegisterForm = ({ onSuccess }) => {
           <span>{serverError}</span>
         </div>
       )}
+
+      {/* Name field */}
+      <div className="input-group">
+        <label className="input-label" htmlFor="reg-name">What should I call you?</label>
+        <input
+          id="reg-name"
+          type="text"
+          name="fullName"
+          placeholder="e.g. Alex or Alex Johnson"
+          value={formData.fullName}
+          onChange={handleChange}
+          className="input-field"
+          disabled={loading}
+          autoComplete="name"
+        />
+      </div>
 
       <div className="input-group">
         <label className="input-label" htmlFor="reg-email">Email Address</label>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X, Check } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X, Check, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { SettingsModal } from './SettingsModal';
 
 export const Sidebar = ({
   conversations,
@@ -13,6 +14,7 @@ export const Sidebar = ({
 }) => {
   const { user, logout } = useAuth();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Auto-reset confirmation after 3 seconds
   useEffect(() => {
@@ -33,9 +35,24 @@ export const Sidebar = ({
     }
   }, [confirmingDeleteId, onDeleteConv]);
 
-  const getInitials = (email) => {
-    if (!email) return 'U';
-    return email.charAt(0).toUpperCase();
+  const getInitials = (user) => {
+    if (user?.full_name) {
+      // Take first letter of each word in the name, up to 2 chars
+      return user.full_name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((w) => w[0].toUpperCase())
+        .join('');
+    }
+    if (user?.email) return user.email.charAt(0).toUpperCase();
+    return 'U';
+  };
+
+  const getDisplayName = (user) => {
+    if (user?.full_name) return user.full_name;
+    if (user?.email) return user.email;
+    return 'User';
   };
 
   return (
@@ -119,12 +136,47 @@ export const Sidebar = ({
       </div>
 
       <div className="sidebar-footer">
-        <div className="user-profile">
-          <div className="user-avatar">{getInitials(user?.email)}</div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span className="user-email">{user?.email || 'User'}</span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Authenticated</span>
+        <div className="user-profile" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+            <div className="user-avatar">{getInitials(user)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <span className="user-email" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                {getDisplayName(user)}
+              </span>
+              {user?.full_name && (
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user.email}
+                </span>
+              )}
+            </div>
           </div>
+
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            title="Settings"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: '6px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--text-main)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.background = 'none';
+            }}
+          >
+            <Settings size={18} />
+          </button>
         </div>
 
         <button
@@ -138,6 +190,8 @@ export const Sidebar = ({
         </button>
       </div>
     </aside>
+
+    <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </>
   );
 };

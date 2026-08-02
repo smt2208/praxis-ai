@@ -16,10 +16,11 @@ from app.dependencies import get_pool
 from app.middleware.rate_limit import limiter
 from app.db import (
     get_history, save_message, get_conversation_has_documents,
-    get_conversation_title, verify_conversation_ownership,
+    get_conversation_title, verify_conversation_ownership, get_memory_enabled, get_user_by_id,
 )
 from app.schemas import ChatRequest, ChatResponse
 from app.services.chat import auto_generate_title
+from app.services.memory import store_memories_background
 from agents.orchestrator import invoke_graph, astream_graph_events
 
 logger = logging.getLogger(__name__)
@@ -44,9 +45,11 @@ async def chat(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    history, has_documents = await asyncio.gather(
+    history, has_documents, mem_enabled, user_profile = await asyncio.gather(
         get_history(pool, body.conversation_id, limit=20),
         get_conversation_has_documents(pool, body.conversation_id),
+        get_memory_enabled(pool, current_user["id"]),
+        get_user_by_id(pool, current_user["id"]),
     )
 
     await save_message(pool, body.conversation_id, "user", body.message)
@@ -59,12 +62,18 @@ async def chat(
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
             has_documents=has_documents,
+            memory_enabled=mem_enabled,
+            user_profile=user_profile,
         )
     except Exception as e:
         logger.error("[Chat] Exception: %s", str(e))
         raise HTTPException(status_code=500, detail="An error occurred while processing your request. Please try again.")
 
     await save_message(pool, body.conversation_id, "assistant", result["answer"])
+
+    # Store memories in background if enabled
+    if mem_enabled:
+        asyncio.create_task(store_memories_background(current_user["id"], body.message, result["answer"]))
 
     try:
         current_title = await get_conversation_title(pool, body.conversation_id)
@@ -95,9 +104,11 @@ async def chat_stream(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    history, has_documents = await asyncio.gather(
+    history, has_documents, mem_enabled, user_profile = await asyncio.gather(
         get_history(pool, body.conversation_id, limit=20),
         get_conversation_has_documents(pool, body.conversation_id),
+        get_memory_enabled(pool, current_user["id"]),
+        get_user_by_id(pool, current_user["id"]),
     )
 
     await save_message(pool, body.conversation_id, "user", body.message)
@@ -116,6 +127,8 @@ async def chat_stream(
                 conversation_id=body.conversation_id,
                 has_documents=has_documents,
                 user_tz=user_tz,
+                memory_enabled=mem_enabled,
+                user_profile=user_profile,
             ):
                 if await request.is_disconnected():
                     break
@@ -144,6 +157,10 @@ async def chat_stream(
                     await save_message(pool, body.conversation_id, "assistant", final_text)
                 except Exception:
                     logger.warning("[Chat Stream] Failed to persist assistant message.")
+
+                # Store memories in background if enabled
+                if mem_enabled:
+                    asyncio.create_task(store_memories_background(current_user["id"], body.message, final_text))
 
             if not stream_error:
                 try:

@@ -12,6 +12,9 @@ from app.schemas.auth import (
     LogoutRequest,
     UserMeResponse,
     VerifyEmailRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    UpdateProfileRequest,
 )
 
 from app.schemas.chat import (

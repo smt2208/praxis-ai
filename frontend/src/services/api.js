@@ -96,9 +96,9 @@ async function refreshTokenPair(refreshToken) {
 // Export API endpoints
 export const api = {
   // Auth
-  register: (email, password) => request('/api/v1/auth/register', {
+  register: (email, password, fullName = '') => request('/api/v1/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, full_name: fullName }),
   }),
 
   login: (email, password) => request('/api/v1/auth/login', {
@@ -119,6 +119,31 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ token }),
   }),
+
+  forgotPassword: (email) => request('/api/v1/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  }),
+
+  resetPassword: (token, newPassword) => request('/api/v1/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  }),
+
+  updateProfile: (profileData) => request('/api/v1/auth/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(profileData),
+  }),
+
+  toggleMemory: (enabled) => request('/api/v1/memory/toggle', {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  }),
+
+  clearMemory: () => request('/api/v1/memory', {
+    method: 'DELETE',
+  }),
+
 
   // Conversations
   getConversations: () => request('/api/v1/conversations', {

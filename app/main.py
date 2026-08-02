@@ -27,6 +27,7 @@ from app.routers.health import router as health_router
 from app.routers.conversations import router as conversations_router
 from app.routers.chat import router as chat_router
 from app.routers.ingest import router as ingest_router
+from app.routers.memory import router as memory_router
 from app.middleware.rate_limit import limiter, rate_limit_handler
 
 settings = get_settings()
@@ -109,6 +110,7 @@ app.include_router(health_router)
 app.include_router(conversations_router)
 app.include_router(chat_router)
 app.include_router(ingest_router)
+app.include_router(memory_router)
 
 
 # --- Dev runner --------------------------------------------------------

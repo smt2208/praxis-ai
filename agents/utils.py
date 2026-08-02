@@ -55,3 +55,27 @@ def build_doc_context(has_documents: bool) -> str:
             "depend on the uploaded files, route to `general` or `research_team`."
         )
     return "CONTEXT: No documents are attached to this conversation. Do NOT route to `knowledge_team`."
+
+
+def build_user_profile_context(user_row: dict | None) -> str:
+    """Format user profile metadata (name, age, profession, location) into prompt context."""
+    if not user_row:
+        return ""
+
+    parts = []
+    if user_row.get("full_name"):
+        parts.append(f"Name: {user_row['full_name']}")
+    if user_row.get("age"):
+        parts.append(f"Age: {user_row['age']}")
+    if user_row.get("profession"):
+        parts.append(f"Profession: {user_row['profession']}")
+
+    location_items = [user_row.get(k) for k in ("city", "state", "country") if user_row.get(k)]
+    if location_items:
+        parts.append(f"Location: {', '.join(location_items)}")
+
+    if not parts:
+        return ""
+
+    return "User Profile Details:\n" + "\n".join(f"- {p}" for p in parts)
+

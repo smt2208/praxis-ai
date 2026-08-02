@@ -42,7 +42,7 @@ High-level synthesis of primary findings, core metrics, and overarching thesis (
 Synthesize evidence gathered from academic repositories, medical databases, encyclopedia, and web sources. Group logically with clear H3 subheadings. Cite paper titles, authors, and data points explicitly.
 
 ## 💡 Technical & Strategic Implications
-Critical analysis of real-world impact, architectural trade-offs, clinical or commercial viability, and industry positioning.
+Critical analysis of real-world impact, architectural trade-offs, clinical or commercial viability, and industry positioning tailored to the user's domain and region when applicable.
 
 ## ⚠️ Limitations & Open Questions
 Acknowledge data gaps, potential biases, or areas requiring further empirical validation.
@@ -56,4 +56,3 @@ REPORTER_HUMAN = """Research Topic: {query}
 
 Gathered Evidence Across Specialized Domains:
 {findings_text}"""
-

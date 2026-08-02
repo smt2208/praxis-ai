@@ -15,6 +15,7 @@ Token lifecycle:
 """
 import secrets
 import asyncpg
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.auth.security import (
@@ -28,13 +29,16 @@ from app.db import (
     save_refresh_token, get_refresh_token,
     delete_refresh_token, delete_all_user_refresh_tokens,
     set_verification_token, verify_email_token,
+    set_password_reset_token, get_user_by_reset_token, reset_user_password,
+    update_full_name, update_user_profile, get_memory_enabled,
 )
 from app.schemas import (
     RegisterRequest, LoginRequest, RefreshRequest, LogoutRequest,
     TokenResponse, UserMeResponse, VerifyEmailRequest,
+    ForgotPasswordRequest, ResetPasswordRequest, UpdateProfileRequest,
 )
 from app.middleware.rate_limit import limiter
-from app.email import send_verification_email
+from app.email import send_verification_email, send_password_reset_email
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
@@ -73,7 +77,7 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
         )
 
     hashed = hash_password(body.password)
-    user_id = await create_user(pool, body.email, hashed)
+    user_id = await create_user(pool, body.email, hashed, body.full_name)
 
     # Generate and store a secure one-time verification token
     token = secrets.token_urlsafe(32)
@@ -192,4 +196,79 @@ async def me(
         user_id=str(user["id"]),
         email=user["email"],
         is_verified=user.get("is_verified", False),
+        full_name=user.get("full_name") or "",
+        memory_enabled=await get_memory_enabled(pool, str(user["id"])),
+        age=user.get("age"),
+        profession=user.get("profession") or "",
+        city=user.get("city") or "",
+        state=user.get("state") or "",
+        country=user.get("country") or "",
     )
+
+
+@router.patch("/profile", status_code=status.HTTP_200_OK)
+async def update_profile(
+    body: UpdateProfileRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+    current_user: dict = Depends(get_current_user),
+):
+    """Update mutable profile fields."""
+    await update_user_profile(
+        pool,
+        current_user["id"],
+        full_name=body.full_name,
+        age=body.age,
+        profession=body.profession,
+        city=body.city,
+        state=body.state,
+        country=body.country,
+    )
+    return {"detail": "Profile updated."}
+
+
+# --- Password Reset --------------------------------------------------------
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest, pool: asyncpg.Pool = Depends(get_pool)):
+    """
+    Request a password reset email.
+
+    Always returns 200 OK — even if the email is not registered.
+    This prevents user enumeration attacks (attacker cannot tell if an
+    email exists by observing a different response).
+    """
+    user = await get_user_by_email(pool, body.email)
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+        stored = await set_password_reset_token(pool, body.email, token, expires_at)
+        if stored:
+            send_password_reset_email(body.email, token)
+
+    # Always return the same message to prevent email enumeration
+    return {"message": "If an account exists for this email, a password reset link has been sent."}
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password(body: ResetPasswordRequest, pool: asyncpg.Pool = Depends(get_pool)):
+    """
+    Reset the user's password using a valid one-time token from the reset email.
+    The token is consumed immediately after use — it cannot be reused.
+    """
+    user = await get_user_by_reset_token(pool, body.token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired. Please request a new one.",
+        )
+
+    new_hashed = hash_password(body.new_password)
+    success = await reset_user_password(pool, body.token, new_hashed)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid or has expired. Please request a new one.",
+        )
+
+    return {"message": "Password reset successfully. You can now log in with your new password."}

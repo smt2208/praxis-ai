@@ -17,12 +17,13 @@ from langgraph.graph.message import add_messages
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
-from agents.utils import format_history, build_doc_context
+from agents.utils import format_history, build_doc_context, build_user_profile_context
 from agents.routing import resolve_route
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
 from prompts.orchestrator_prompts import FOLLOW_UP_SYSTEM
+from app.services.memory import retrieve_memories
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class OrchestratorState(TypedDict):
     has_documents: bool
     route: str
     final_answer: str
+    memory_context: str
 
 
 # ---------------------------------------------------------------------------
@@ -150,10 +152,20 @@ def invoke_graph(
     user_id: str,
     conversation_id: str,
     has_documents: bool,
+    memory_enabled: bool = True,
+    user_profile: dict | None = None,
 ) -> dict:
     """Synchronous invocation. Returns {"answer": str, "route": str}."""
     messages = _history_to_messages(history)
     messages.append(HumanMessage(content=query))
+
+    # Retrieve long-term memories and profile for this user
+    memory_context = retrieve_memories(user_id, query) if memory_enabled else ""
+    profile_context = build_user_profile_context(user_profile)
+
+    combined_context = "\n\n".join(filter(None, [profile_context, memory_context]))
+    if combined_context:
+        messages.insert(0, SystemMessage(content=combined_context))
 
     result = main_graph.invoke({
         "messages": messages,
@@ -163,6 +175,7 @@ def invoke_graph(
         "has_documents": has_documents,
         "route": "",
         "final_answer": "",
+        "memory_context": memory_context,
     })
     return {"answer": result["final_answer"], "route": result["route"]}
 
@@ -175,6 +188,8 @@ async def astream_graph_events(
     conversation_id: str,
     has_documents: bool,
     user_tz: str = None,
+    memory_enabled: bool = True,
+    user_profile: dict | None = None,
 ):
     """
     Async generator for SSE streaming.
@@ -186,6 +201,14 @@ async def astream_graph_events(
     from agents.subgraphs.research_team import astream_research_team
 
     messages = _history_to_messages(history)
+
+    # Retrieve long-term memories and profile for this user
+    memory_context = (await asyncio.to_thread(retrieve_memories, user_id, query)) if memory_enabled else ""
+    profile_context = build_user_profile_context(user_profile)
+
+    combined_context = "\n\n".join(filter(None, [profile_context, memory_context]))
+    if combined_context:
+        messages.insert(0, SystemMessage(content=combined_context))
 
     # ── Step 1: Route ──────────────────────────────────────────────────
     yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}

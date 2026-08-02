@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { LogIn, Mail, Lock } from 'lucide-react';
 
-export const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
+export const LoginForm = ({ onSuccess, onSwitchToRegister, onForgotPassword }) => {
   const { login } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -110,6 +110,21 @@ export const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
           />
         </div>
         {errors.password && <span className="error-text">{errors.password}</span>}
+
+        {onForgotPassword && (
+          <button
+            type="button"
+            onClick={onForgotPassword}
+            style={{
+              background: 'none', border: 'none', color: '#38bdf8',
+              fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer',
+              padding: '4px 0 0 0', textAlign: 'right', display: 'block',
+              marginLeft: 'auto',
+            }}
+          >
+            Forgot password?
+          </button>
+        )}
       </div>
 
       <button

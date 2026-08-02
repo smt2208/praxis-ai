@@ -7,6 +7,7 @@ import { FeatureGrid } from './components/landing/FeatureGrid';
 import { Footer } from './components/landing/Footer';
 import { AuthModal } from './components/auth/AuthModal';
 import { VerifyEmailPage } from './components/auth/VerifyEmailPage';
+import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Sidebar } from './components/chat/Sidebar';
 import { ChatWindow } from './components/chat/ChatWindow';
 import { api } from './services/api';
@@ -145,6 +146,18 @@ const MainLayout = () => {
 };
 
 export default function App() {
+  // Render the password reset page for users arriving from the reset email link
+  if (currentPath === '/reset-password') {
+    return (
+      <ResetPasswordPage
+        onGoToLogin={() => {
+          window.history.pushState({}, '', '/');
+          window.location.reload();
+        }}
+      />
+    );
+  }
+
   // Render the email verification page for users arriving from the email link
   if (currentPath === '/verify-email') {
     return (

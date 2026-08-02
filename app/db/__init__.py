@@ -12,6 +12,13 @@ from app.db.users import (
     get_user_by_id,
     set_verification_token,
     verify_email_token,
+    set_password_reset_token,
+    get_user_by_reset_token,
+    reset_user_password,
+    update_full_name,
+    update_user_profile,
+    get_memory_enabled,
+    set_memory_enabled,
 )
 
 from app.db.conversations import (

@@ -63,6 +63,28 @@ UPDATE users SET is_verified = TRUE WHERE verification_token IS NULL AND is_veri
 """
 
 
+_ADD_PASSWORD_RESET_COLS = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token       TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires_at  TIMESTAMP;
+"""
+
+_ADD_FULL_NAME_COL = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(100);
+"""
+
+_ADD_MEMORY_ENABLED_COL = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS memory_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+"""
+
+_ADD_EXTENDED_PROFILE_COLS = """
+ALTER TABLE users ADD COLUMN IF NOT EXISTS age        INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profession VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city       VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS state      VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS country    VARCHAR(100);
+"""
+
+
 async def init_db_pool(settings: Settings) -> asyncpg.Pool:
     """Create the asyncpg connection pool and ensure all tables exist."""
     pool = await asyncpg.create_pool(
@@ -78,4 +100,9 @@ async def init_db_pool(settings: Settings) -> asyncpg.Pool:
         await conn.execute(_CREATE_TABLES_SQL)
         await conn.execute(_ADD_CONVERSATION_HAS_DOCUMENTS_COL)
         await conn.execute(_ADD_EMAIL_VERIFICATION_COLS)
+        await conn.execute(_ADD_PASSWORD_RESET_COLS)
+        await conn.execute(_ADD_FULL_NAME_COL)
+        await conn.execute(_ADD_MEMORY_ENABLED_COL)
+        await conn.execute(_ADD_EXTENDED_PROFILE_COLS)
     return pool
+
