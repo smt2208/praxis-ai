@@ -41,7 +41,7 @@ def _get_memory() -> Memory:
         "llm": {
             "provider": "openai",
             "config": {
-                "model": "gpt-5-nano-2025-08-07",
+                "model": "gpt-4o-mini",
                 "api_key": settings.openai_api_key,
             },
         },
@@ -71,20 +71,30 @@ def retrieve_memories(user_id: str, query: str, limit: int = 5) -> str:
     """
     try:
         mem = _get_memory()
-        results = mem.search(query=query, filters={"user_id": user_id}, limit=limit)
+        # Handle both v1 (user_id="...") and v2 (filters={"user_id": "..."}) search formats defensively
+        try:
+            results = mem.search(query=query, filters={"user_id": user_id}, limit=limit)
+        except Exception:
+            results = mem.search(query=query, user_id=user_id, limit=limit)
 
-        memories = results.get("results", [])
+        if isinstance(results, list):
+            memories = results
+        elif isinstance(results, dict):
+            memories = results.get("results", [])
+        else:
+            memories = []
+
         if not memories:
             return ""
 
-        lines = [m["memory"] for m in memories if m.get("memory")]
+        lines = [m["memory"] for m in memories if isinstance(m, dict) and m.get("memory")]
         if not lines:
             return ""
 
         return "What you remember about this user from past conversations:\n" + "\n".join(f"- {line}" for line in lines)
 
     except Exception as exc:
-        logger.warning("[memory] Failed to retrieve memories for user %s: %s", user_id, exc)
+        logger.error("[memory] Failed to retrieve memories for user %s: %s", user_id, exc)
         return ""
 
 
@@ -97,18 +107,14 @@ def store_memories(user_id: str, user_message: str, assistant_response: str) -> 
     """
     try:
         mem = _get_memory()
-        mem.add(
-            [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": assistant_response},
-            ],
-            user_id=user_id,
-        )
-        logger.debug("[memory] Stored memories for user %s", user_id)
+        conversation_turn = f"User: {user_message}\nAssistant: {assistant_response}"
+        mem.add(conversation_turn, user_id=user_id)
+        logger.info("[memory] Successfully stored memory for user %s", user_id)
 
     except Exception as exc:
-        # Never crash the app for memory failures
-        logger.warning("[memory] Failed to store memories for user %s: %s", user_id, exc)
+        # Log error clearly for diagnostics
+        logger.error("[memory] Failed to store memory for user %s: %s", user_id, exc, exc_info=True)
+
 
 
 async def store_memories_background(user_id: str, user_message: str, assistant_response: str) -> None:
