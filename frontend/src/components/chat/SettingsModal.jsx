@@ -1,42 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { X, User, Brain, Trash2, Check, Shield, AlertTriangle, Briefcase, MapPin, Calendar } from 'lucide-react';
+import { X, User, Brain, Trash2, Check, Shield, AlertTriangle } from 'lucide-react';
 
 export const SettingsModal = ({ isOpen, onClose }) => {
   const { user, updateProfile, toggleMemory, clearMemory } = useAuth();
-  const [activeTab, setActiveTab] = useState('general');
+  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'personalisation'
 
-  // Extended Profile Form state
+  // General profile form state
   const [profileForm, setProfileForm] = useState({
-    fullName: '',
-    age: '',
-    profession: '',
-    city: '',
-    state: '',
-    country: '',
+    fullName: user?.full_name || '',
+    age: user?.age || '',
+    profession: user?.profession || '',
+    city: user?.city || '',
+    state: user?.state || '',
+    country: user?.country || '',
   });
+
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
 
-  // Memory states
-  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  // Personalisation memory state
+  const [memoryEnabled, setMemoryEnabled] = useState(user?.memory_enabled ?? true);
   const [togglingMem, setTogglingMem] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [clearingMem, setClearingMem] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
+  // Keep form in sync when user context loads/updates
   useEffect(() => {
     if (user) {
       setProfileForm({
         fullName: user.full_name || '',
-        age: user.age ? String(user.age) : '',
+        age: user.age || '',
         profession: user.profession || '',
         city: user.city || '',
         state: user.state || '',
         country: user.country || '',
       });
-      setMemoryEnabled(user.memory_enabled !== false);
+      setMemoryEnabled(user.memory_enabled ?? true);
     }
-  }, [user, isOpen]);
+  }, [user]);
 
   if (!isOpen) return null;
 
@@ -48,10 +50,11 @@ export const SettingsModal = ({ isOpen, onClose }) => {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     setSavingProfile(true);
-    const parsedAge = profileForm.age ? parseInt(profileForm.age, 10) : null;
+    setProfileSuccess(false);
+
     const payload = {
       full_name: profileForm.fullName.trim(),
-      age: isNaN(parsedAge) ? null : parsedAge,
+      age: profileForm.age ? parseInt(profileForm.age, 10) : null,
       profession: profileForm.profession.trim(),
       city: profileForm.city.trim(),
       state: profileForm.state.trim(),
@@ -60,13 +63,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
 
     const res = await updateProfile(payload);
     setSavingProfile(false);
+
     if (res.success) {
       setProfileSuccess(true);
-      setTimeout(() => setProfileSuccess(false), 2500);
+      setTimeout(() => setProfileSuccess(false), 3500);
     }
   };
 
   const handleToggleMemory = async () => {
+    if (togglingMem) return;
     const nextState = !memoryEnabled;
     setMemoryEnabled(nextState);
     setTogglingMem(true);
@@ -88,7 +93,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
     <div className="auth-modal-overlay" onClick={onClose}>
       <div
         className="auth-modal-container settings-modal-container"
-        style={{ maxWidth: '650px', width: '94%', padding: '0', overflow: 'hidden' }}
+        style={{
+          maxWidth: '650px',
+          width: '94%',
+          padding: '0',
+          overflow: 'hidden',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-color)',
+          color: 'var(--text-main)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -99,10 +112,10 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             justifyContent: 'space-between',
             padding: '20px 24px',
             borderBottom: '1px solid var(--border-color)',
-            background: 'rgba(15, 23, 42, 0.95)',
+            background: 'var(--bg-elevated)',
           }}
         >
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-main)' }}>
             Settings
           </h2>
           <button className="modal-close-btn" style={{ top: '16px', right: '16px' }} onClick={onClose}>
@@ -118,7 +131,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
             style={{
               width: '180px',
               borderRight: '1px solid var(--border-color)',
-              background: 'rgba(15, 23, 42, 0.5)',
+              background: 'var(--bg-sidebar)',
               padding: '12px',
               display: 'flex',
               flexDirection: 'column',
@@ -133,7 +146,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 gap: '10px',
                 padding: '10px 14px',
                 borderRadius: 'var(--radius-md)',
-                background: activeTab === 'general' ? 'rgba(129, 140, 248, 0.15)' : 'transparent',
+                background: activeTab === 'general' ? 'var(--primary-soft)' : 'transparent',
                 color: activeTab === 'general' ? 'var(--primary)' : 'var(--text-muted)',
                 fontWeight: activeTab === 'general' ? 600 : 400,
                 border: 'none',
@@ -154,7 +167,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                 gap: '10px',
                 padding: '10px 14px',
                 borderRadius: 'var(--radius-md)',
-                background: activeTab === 'personalisation' ? 'rgba(129, 140, 248, 0.15)' : 'transparent',
+                background: activeTab === 'personalisation' ? 'var(--primary-soft)' : 'transparent',
                 color: activeTab === 'personalisation' ? 'var(--primary)' : 'var(--text-muted)',
                 fontWeight: activeTab === 'personalisation' ? 600 : 400,
                 border: 'none',
@@ -169,7 +182,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
           </div>
 
           {/* Tab Content */}
-          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', maxHeight: '480px' }}>
+          <div style={{ flex: 1, padding: '24px', overflowY: 'auto', maxHeight: '480px', background: 'var(--bg-elevated)' }}>
             {activeTab === 'general' && (
               <div>
                 <div style={{ marginBottom: '16px' }}>
@@ -307,7 +320,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                         padding: '9px 22px',
                         borderRadius: 'var(--radius-md)',
                         background: profileSuccess ? 'var(--accent-emerald)' : 'var(--primary)',
-                        color: '#04111d',
+                        color: 'var(--text-on-primary)',
                         fontWeight: 600,
                         border: 'none',
                         cursor: 'pointer',
@@ -344,12 +357,12 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     justifyContent: 'space-between',
                     padding: '16px',
                     borderRadius: 'var(--radius-md)',
-                    background: 'rgba(30, 41, 59, 0.5)',
+                    background: 'var(--bg-card)',
                     border: '1px solid var(--border-color)',
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>Memory</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-main)' }}>Memory</span>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
                       {memoryEnabled ? 'Praxis will remember facts from your messages.' : 'Memory is disabled. Past memories will not be accessed.'}
                     </span>
@@ -366,7 +379,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                       width: '48px',
                       height: '26px',
                       borderRadius: '999px',
-                      background: memoryEnabled ? 'var(--primary)' : 'rgba(255, 255, 255, 0.15)',
+                      background: memoryEnabled ? 'var(--primary)' : 'var(--border-color)',
                       border: 'none',
                       position: 'relative',
                       cursor: 'pointer',
@@ -380,9 +393,10 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                         width: '20px',
                         height: '20px',
                         borderRadius: '50%',
-                        background: memoryEnabled ? '#04111d' : '#94a3b8',
+                        background: 'var(--bg-elevated)',
                         transform: memoryEnabled ? 'translateX(22px)' : 'translateX(0)',
                         transition: 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                       }}
                     />
                   </button>
@@ -393,15 +407,15 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                   style={{
                     padding: '16px',
                     borderRadius: 'var(--radius-md)',
-                    background: 'rgba(244, 63, 94, 0.05)',
-                    border: '1px solid rgba(244, 63, 94, 0.2)',
+                    background: 'rgba(239, 68, 68, 0.06)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '12px',
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.92rem', color: '#f87171' }}>Clear Memory</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--accent-rose)' }}>Clear Memory</span>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       Permanently wipe all long-term memories Praxis has stored about you.
                     </span>
@@ -415,9 +429,9 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                         alignSelf: 'flex-start',
                         padding: '8px 14px',
                         borderRadius: 'var(--radius-sm)',
-                        background: 'rgba(244, 63, 94, 0.15)',
-                        border: '1px solid rgba(244, 63, 94, 0.3)',
-                        color: '#fca5a5',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.25)',
+                        color: 'var(--accent-rose)',
                         fontWeight: 600,
                         fontSize: '0.85rem',
                         cursor: 'pointer',
@@ -431,7 +445,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                     </button>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '0.8rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--accent-rose)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <AlertTriangle size={14} /> Are you sure?
                       </span>
                       <button
@@ -442,7 +456,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                           padding: '6px 12px',
                           borderRadius: 'var(--radius-sm)',
                           background: 'var(--accent-rose)',
-                          color: '#04111d',
+                          color: '#ffffff',
                           fontWeight: 700,
                           fontSize: '0.82rem',
                           border: 'none',
@@ -457,7 +471,7 @@ export const SettingsModal = ({ isOpen, onClose }) => {
                         style={{
                           padding: '6px 12px',
                           borderRadius: 'var(--radius-sm)',
-                          background: 'rgba(255, 255, 255, 0.1)',
+                          background: 'var(--bg-card-hover)',
                           color: 'var(--text-muted)',
                           fontSize: '0.82rem',
                           border: 'none',

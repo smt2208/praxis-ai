@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileUp, Link, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, FileUp, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 
 export const DocumentIngestModal = ({ isOpen, onClose, conversationId }) => {
@@ -57,7 +57,7 @@ export const DocumentIngestModal = ({ isOpen, onClose, conversationId }) => {
         </button>
 
         <div className="auth-header" style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'inline-flex', color: '#34d399', marginBottom: '8px' }}>
+          <div style={{ display: 'inline-flex', color: 'var(--accent-emerald)', marginBottom: '8px' }}>
             <FileUp size={28} />
           </div>
           <h3>Ingest Knowledge Document</h3>
@@ -83,9 +83,9 @@ export const DocumentIngestModal = ({ isOpen, onClose, conversationId }) => {
           <div
             className="auth-alert"
             style={{
-              background: statusMsg.type === 'success' ? 'rgba(52, 211, 153, 0.12)' : 'rgba(244, 63, 94, 0.12)',
-              borderColor: statusMsg.type === 'success' ? 'rgba(52, 211, 153, 0.3)' : 'rgba(244, 63, 94, 0.3)',
-              color: statusMsg.type === 'success' ? '#6ee7b7' : '#fca5a5',
+              background: statusMsg.type === 'success' ? 'rgba(52, 211, 153, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+              borderColor: statusMsg.type === 'success' ? 'rgba(52, 211, 153, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+              color: statusMsg.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-rose)',
             }}
           >
             {statusMsg.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}

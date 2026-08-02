@@ -41,43 +41,36 @@ export const VerifyEmailPage = ({ onGoToLogin }) => {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: '#090d16',
+      background: 'var(--bg-base)',
       padding: '24px',
     }}>
       <div style={{
-        background: '#1e293b',
-        border: '1px solid #334155',
-        borderRadius: '16px',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-xl)',
         padding: '48px 40px',
         maxWidth: '440px',
         width: '100%',
         textAlign: 'center',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
       }}>
         {status === 'loading' && (
           <>
-            <Loader2 size={48} style={{ color: '#818cf8', animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
-            <h2 style={{ color: '#e2e8f0', marginBottom: '8px' }}>Verifying your email…</h2>
-            <p style={{ color: '#64748b', fontSize: '14px' }}>Just a moment.</p>
+            <Loader2 size={48} style={{ color: 'var(--primary)', animation: 'spin 1s linear infinite', marginBottom: '16px' }} />
+            <h2 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Verifying your email…</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Just a moment.</p>
           </>
         )}
 
         {status === 'success' && (
           <>
-            <CheckCircle size={48} style={{ color: '#34d399', marginBottom: '16px' }} />
-            <h2 style={{ color: '#e2e8f0', marginBottom: '8px' }}>Email Verified!</h2>
-            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '28px' }}>{message}</p>
+            <CheckCircle size={48} style={{ color: 'var(--accent-emerald)', marginBottom: '16px' }} />
+            <h2 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Email Verified!</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '28px' }}>{message}</p>
             <button
               onClick={onGoToLogin}
-              style={{
-                padding: '10px 28px',
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '15px',
-                cursor: 'pointer',
-              }}
+              className="btn btn-primary"
+              style={{ padding: '10px 28px' }}
             >
               Go to Login
             </button>
@@ -86,23 +79,15 @@ export const VerifyEmailPage = ({ onGoToLogin }) => {
 
         {status === 'error' && (
           <>
-            <XCircle size={48} style={{ color: '#f87171', marginBottom: '16px' }} />
-            <h2 style={{ color: '#e2e8f0', marginBottom: '8px' }}>Verification Failed</h2>
-            <p style={{ color: '#94a3b8', fontSize: '14px', marginBottom: '28px' }}>{message}</p>
+            <XCircle size={48} style={{ color: 'var(--accent-rose)', marginBottom: '16px' }} />
+            <h2 style={{ color: 'var(--text-main)', marginBottom: '8px' }}>Verification Failed</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '28px' }}>{message}</p>
             <button
               onClick={onGoToLogin}
-              style={{
-                padding: '10px 28px',
-                background: '#334155',
-                color: '#e2e8f0',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: 600,
-                fontSize: '15px',
-                cursor: 'pointer',
-              }}
+              className="btn btn-secondary"
+              style={{ padding: '10px 28px' }}
             >
-              Back to Login
+              Go to Login
             </button>
           </>
         )}

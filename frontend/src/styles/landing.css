@@ -4,9 +4,9 @@
   flex-direction: column;
   min-height: 100vh;
   position: relative;
-  background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.12) 0%, transparent 60%),
-              radial-gradient(circle at 100% 50%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
-              var(--bg-dark);
+  background: radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+              radial-gradient(circle at 100% 50%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
+              var(--bg-base);
 }
 
 /* Navbar */
@@ -18,8 +18,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(9, 13, 22, 0.8);
+  background: var(--bg-header);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -38,11 +39,11 @@
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-purple) 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, #c084fc 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #04111d;
+  color: #ffffff;
   box-shadow: 0 0 15px var(--primary-glow);
 }
 
@@ -67,8 +68,8 @@
   margin-bottom: 24px;
   padding: 6px 16px;
   border-radius: 30px;
-  background: rgba(56, 189, 248, 0.1);
-  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: var(--primary-soft);
+  border: 1px solid rgba(139, 92, 246, 0.25);
   color: var(--primary);
   font-size: 0.85rem;
   font-weight: 600;
@@ -84,6 +85,7 @@
   letter-spacing: -0.03em;
   margin-bottom: 24px;
   max-width: 900px;
+  color: var(--text-main);
 }
 
 .hero-description {
@@ -119,6 +121,7 @@
   font-size: 2.4rem;
   font-weight: 700;
   margin-bottom: 12px;
+  color: var(--text-main);
 }
 
 .section-header p {
@@ -137,6 +140,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background: var(--bg-card);
 }
 
 .swarm-card-icon {
@@ -151,6 +155,7 @@
 .swarm-card h3 {
   font-size: 1.3rem;
   font-weight: 700;
+  color: var(--text-main);
 }
 
 .swarm-card p {
@@ -176,7 +181,7 @@
 .feature-item {
   padding: 24px;
   border-radius: var(--radius-md);
-  background: rgba(15, 23, 42, 0.4);
+  background: var(--bg-card);
   border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
@@ -192,6 +197,7 @@
 .feature-item h4 {
   font-size: 1.1rem;
   font-weight: 600;
+  color: var(--text-main);
 }
 
 .feature-item p {
@@ -209,6 +215,7 @@
   justify-content: space-between;
   color: var(--text-dim);
   font-size: 0.9rem;
+  background: var(--bg-base);
 }
 
 @media (max-width: 768px) {

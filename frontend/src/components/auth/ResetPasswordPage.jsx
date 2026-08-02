@@ -67,33 +67,33 @@ export const ResetPasswordPage = ({ onGoToLogin }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#090d16',
+      background: 'var(--bg-base)',
       padding: '24px 16px',
-      fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     }}>
       <div style={{
         width: '100%',
         maxWidth: '420px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '16px',
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--radius-xl)',
         padding: '40px 36px',
-        backdropFilter: 'blur(12px)',
+        backdropFilter: 'blur(16px)',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.2)',
       }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div style={{ fontWeight: 700, fontSize: '22px', color: '#818cf8', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+          <div style={{ fontWeight: 800, fontSize: '24px', color: 'var(--primary)', letterSpacing: '-0.02em', marginBottom: '6px' }}>
             Praxis
           </div>
-          <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, color: '#f1f5f9' }}>
+          <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-main)' }}>
             {success ? 'Password Reset!' : 'Create New Password'}
           </h1>
         </div>
 
         {success ? (
           <div style={{ textAlign: 'center' }}>
-            <CheckCircle size={44} style={{ color: '#34d399', marginBottom: '16px' }} />
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '24px' }}>
+            <CheckCircle size={44} style={{ color: 'var(--accent-emerald)', marginBottom: '16px' }} />
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '24px' }}>
               Your password has been reset successfully. You can now sign in with your new password.
             </p>
             <button
@@ -148,7 +148,7 @@ export const ResetPasswordPage = ({ onGoToLogin }) => {
               <input
                 id="confirm-password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Re-enter your new password"
+                placeholder="Repeat password"
                 value={confirmPassword}
                 onChange={(e) => {
                   setConfirmPassword(e.target.value);
@@ -163,27 +163,10 @@ export const ResetPasswordPage = ({ onGoToLogin }) => {
             <button
               type="submit"
               className="btn btn-primary"
-              style={{ width: '100%', marginTop: '12px' }}
+              style={{ width: '100%', marginTop: '8px' }}
               disabled={loading || !token}
             >
-              {loading ? (
-                <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /><span>Saving...</span></>
-              ) : (
-                <><Lock size={16} /><span>Reset Password</span></>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={onGoToLogin}
-              style={{
-                background: 'none', border: 'none', color: 'var(--text-dim)',
-                fontSize: '0.82rem', cursor: 'pointer', marginTop: '14px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: '100%', padding: 0,
-              }}
-            >
-              Back to Sign In
+              {loading ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset Password'}
             </button>
           </form>
         )}

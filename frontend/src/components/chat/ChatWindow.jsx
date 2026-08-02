@@ -98,6 +98,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       }
     };
     fetchData();
+
     return () => { cancelled = true; };
   }, [conversationId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -116,7 +117,6 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     const text = inputMessage.trim();
     setInputMessage('');
     resetTextareaHeight();
-    // Scroll to bottom immediately on submit
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
     await doSend(text);
   };
@@ -132,8 +132,10 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           <button className="mobile-menu-btn" onClick={onToggleSidebar} title="Open navigation sidebar">
             <Menu size={20} />
           </button>
-          <MessageSquare size={18} style={{ color: '#818cf8' }} />
-          <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{activeTitle || 'New Conversation'}</span>
+          <MessageSquare size={18} style={{ color: 'var(--primary)' }} />
+          <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-main)' }}>
+            {activeTitle || 'New Conversation'}
+          </span>
         </div>
       </div>
 
@@ -142,7 +144,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
         {loadingHistory ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 20px', gap: '16px' }}>
-            <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#818cf8' }} />
+            <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: 'var(--primary)' }} />
             <span style={{ color: 'var(--text-dim)', fontSize: '0.9rem', fontWeight: 500 }}>Loading conversation...</span>
           </div>
 
@@ -176,13 +178,11 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
                 onClick={handleRetry}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: '6px',
-                  background: 'rgba(129, 140, 248, 0.15)', border: '1px solid rgba(129, 140, 248, 0.3)',
-                  color: '#a5b4fc', padding: '6px 14px', borderRadius: '8px',
+                  background: 'var(--primary-soft)', border: '1px solid var(--border-glow)',
+                  color: 'var(--primary)', padding: '6px 14px', borderRadius: '8px',
                   fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'all 0.2s ease', flexShrink: 0,
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(129, 140, 248, 0.25)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(129, 140, 248, 0.15)'; }}
               >
                 <RotateCcw size={14} /> Retry
               </button>
@@ -200,8 +200,8 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         {ingesting && uploadingFileName && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: '8px',
-            fontSize: '0.82rem', color: '#93c5fd',
-            background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.2)',
+            fontSize: '0.82rem', color: 'var(--accent-sky)',
+            background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.25)',
             padding: '6px 12px', borderRadius: '8px', marginBottom: '8px',
           }}>
             <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
@@ -215,8 +215,8 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             {activeFiles.map((f, i) => (
               <div key={i} style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
-                fontSize: '0.78rem', color: '#6ee7b7',
-                background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.25)',
+                fontSize: '0.78rem', color: 'var(--accent-emerald)',
+                background: 'rgba(52, 211, 153, 0.12)', border: '1px solid rgba(52, 211, 153, 0.25)',
                 padding: '4px 10px', borderRadius: '20px',
               }}>
                 <FileText size={12} />
@@ -242,7 +242,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             title="Attach file (PDF, DOCX, TXT) to ingest into session"
             disabled={ingesting || sending}
             style={{
-              background: 'rgba(255, 255, 255, 0.06)', border: 'none', borderRadius: '50%',
+              background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '50%',
               width: '36px', height: '36px', display: 'flex', alignItems: 'center',
               justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer',
               transition: 'all 0.2s ease', flexShrink: 0,
@@ -266,8 +266,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
           {/* Stop / Send button */}
           {sending ? (
-            <button type="button" className="send-btn stop-btn" onClick={handleStop} title="Stop generating"
-              style={{ background: '#ef4444' }}>
+            <button type="button" className="send-btn stop-btn" onClick={handleStop} title="Stop generating">
               <Square size={14} fill="white" />
             </button>
           ) : (
