@@ -28,7 +28,7 @@ const MainLayout = () => {
   // Chat state
   const [conversations, setConversations] = useState([]);
   const [activeConvId, setActiveConvId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768);
   const initialChatCreatedRef = useRef(false);
 
   // When user becomes authenticated, load their conversations
@@ -98,15 +98,23 @@ const MainLayout = () => {
 
   // ─── If authenticated → always go straight to the chat workspace ───
   if (isAuthenticated) {
+    const handleSelectConv = (id) => {
+      setActiveConvId(id);
+      if (window.innerWidth <= 768) {
+        setSidebarOpen(false);
+      }
+    };
+
     return (
       <div className="chat-workspace">
         <Sidebar
           conversations={conversations}
           activeConvId={activeConvId}
-          onSelectConv={(id) => { setActiveConvId(id); setSidebarOpen(false); }}
+          onSelectConv={handleSelectConv}
           onNewConv={handleCreateNewConversation}
           onDeleteConv={handleDeleteConversation}
           isOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
           onClose={() => setSidebarOpen(false)}
         />
         <ChatWindow
@@ -115,6 +123,7 @@ const MainLayout = () => {
           onRefreshConversations={loadConversations}
           onSelectActiveConv={(convId) => setActiveConvId(convId)}
           onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+          sidebarOpen={sidebarOpen}
         />
       </div>
     );

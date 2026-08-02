@@ -164,12 +164,12 @@ export const api = {
   }),
 
   // Chat
-  sendMessage: (conversationId, message) => request('/api/v1/chat', {
+  sendMessage: (conversationId, message, images = []) => request('/api/v1/chat', {
     method: 'POST',
-    body: JSON.stringify({ conversation_id: conversationId, message }),
+    body: JSON.stringify({ conversation_id: conversationId, message, images }),
   }),
 
-  sendMessageStream: async (conversationId, message, { onAgentStart, onToken, onDone, onError, signal } = {}) => {
+  sendMessageStream: async (conversationId, message, images = [], { onAgentStart, onToken, onDone, onError, signal } = {}) => {
     let accessToken = localStorage.getItem('access_token');
     const headers = {
       'Content-Type': 'application/json',
@@ -185,7 +185,7 @@ export const api = {
     let response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ conversation_id: conversationId, message }),
+      body: JSON.stringify({ conversation_id: conversationId, message, images }),
       signal,
     });
 
@@ -198,7 +198,7 @@ export const api = {
           response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({ conversation_id: conversationId, message }),
+            body: JSON.stringify({ conversation_id: conversationId, message, images }),
             signal,
           });
         }

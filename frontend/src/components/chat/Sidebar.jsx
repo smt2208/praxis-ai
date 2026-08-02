@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Trash2, X, Check, Settings } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Trash2, X, Check, Settings, PanelLeftClose } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { SettingsModal } from './SettingsModal';
 import { ThemeToggle } from '../common/ThemeToggle';
@@ -11,6 +11,7 @@ export const Sidebar = ({
   onNewConv,
   onDeleteConv,
   isOpen,
+  onToggleSidebar,
   onClose,
 }) => {
   const { user, logout } = useAuth();
@@ -56,15 +57,20 @@ export const Sidebar = ({
   return (
     <>
       <div className={`sidebar-overlay ${isOpen ? 'open' : ''}`} onClick={onClose} />
-      <aside className={`chat-sidebar ${isOpen ? 'open' : ''}`}>
+      <aside className={`chat-sidebar ${isOpen ? 'open' : 'collapsed'}`}>
         <div className="sidebar-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-main)' }}>
             <img src="/logo.png" alt="Praxis Logo" style={{ width: 26, height: 26, borderRadius: '6px', objectFit: 'contain' }} />
             <span>Praxis</span>
           </div>
-          <button className="sidebar-close-btn" onClick={onClose} title="Close sidebar">
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button className="sidebar-collapse-btn" onClick={onToggleSidebar || onClose} title="Hide sidebar">
+              <PanelLeftClose size={18} />
+            </button>
+            <button className="sidebar-close-btn" onClick={onClose} title="Close sidebar">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <button className="btn btn-primary new-chat-btn" onClick={onNewConv}>

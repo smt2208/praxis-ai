@@ -17,11 +17,12 @@ from langgraph.graph.message import add_messages
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
-from agents.utils import format_history, build_doc_context, build_user_profile_context
+from agents.utils import format_history, build_doc_context, build_image_context, build_user_profile_context
 from agents.routing import resolve_route
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
+from agents.subgraphs.vision_agent import run_vision_agent, astream_vision_agent
 from prompts.orchestrator_prompts import FOLLOW_UP_SYSTEM
 from app.services.memory import retrieve_memories
 
@@ -40,6 +41,7 @@ class OrchestratorState(TypedDict):
     user_id: str
     conversation_id: str
     has_documents: bool
+    images: list[str]
     route: str
     final_answer: str
     memory_context: str
@@ -53,7 +55,18 @@ def ceo_node(state: OrchestratorState) -> dict:
     """Analyze the conversation and route to the correct department."""
     history_text = format_history(state["messages"][:-1], last_n=20)
     doc_context = build_doc_context(state["has_documents"])
-    route = resolve_route(state["query"], history_text, doc_context, state["has_documents"])
+    images = state.get("images") or []
+    has_images = bool(images)
+    image_context = build_image_context(has_images, len(images))
+
+    route = resolve_route(
+        state["query"],
+        history_text,
+        doc_context,
+        state["has_documents"],
+        has_images=has_images,
+        image_context=image_context,
+    )
     return {"route": route}
 
 
@@ -80,6 +93,12 @@ def general_agent_node(state: OrchestratorState) -> dict:
     return {"final_answer": answer}
 
 
+def vision_agent_node(state: OrchestratorState) -> dict:
+    """Handles visual Q&A and image analysis."""
+    answer = run_vision_agent(state["query"], state.get("images") or [], state["messages"][:-1])
+    return {"final_answer": answer}
+
+
 def follow_up_node(state: OrchestratorState) -> dict:
     """Handles conversational replies, rephrasing, or summaries using history."""
     recent_msgs = list(state["messages"][-10:])
@@ -103,6 +122,7 @@ def _build_main_graph():
     builder.add_node("knowledge_team_node", knowledge_team_node)
     builder.add_node("research_team_node", research_team_node)
     builder.add_node("general_agent_node", general_agent_node)
+    builder.add_node("vision_agent_node", vision_agent_node)
     builder.add_node("follow_up_node", follow_up_node)
 
     builder.add_edge(START, "ceo")
@@ -113,12 +133,14 @@ def _build_main_graph():
             "knowledge_team": "knowledge_team_node",
             "research_team":  "research_team_node",
             "general":        "general_agent_node",
+            "vision_agent":   "vision_agent_node",
             "follow_up":      "follow_up_node",
         },
     )
     builder.add_edge("knowledge_team_node", END)
     builder.add_edge("research_team_node", END)
     builder.add_edge("general_agent_node", END)
+    builder.add_edge("vision_agent_node", END)
     builder.add_edge("follow_up_node", END)
 
     return builder.compile()
@@ -153,6 +175,7 @@ def invoke_graph(
     user_id: str,
     conversation_id: str,
     has_documents: bool,
+    images: list[str] | None = None,
     memory_enabled: bool = True,
     user_profile: dict | None = None,
 ) -> dict:
@@ -160,7 +183,6 @@ def invoke_graph(
     messages = _history_to_messages(history)
     messages.append(HumanMessage(content=query))
 
-    # Retrieve long-term memories and profile for this user
     memory_context = retrieve_memories(user_id, query) if memory_enabled else ""
     profile_context = build_user_profile_context(user_profile)
 
@@ -174,6 +196,7 @@ def invoke_graph(
         "user_id": user_id,
         "conversation_id": conversation_id,
         "has_documents": has_documents,
+        "images": images or [],
         "route": "",
         "final_answer": "",
         "memory_context": memory_context,
@@ -188,6 +211,7 @@ async def astream_graph_events(
     user_id: str,
     conversation_id: str,
     has_documents: bool,
+    images: list[str] | None = None,
     user_tz: str = None,
     memory_enabled: bool = True,
     user_profile: dict | None = None,
@@ -202,8 +226,8 @@ async def astream_graph_events(
     from agents.subgraphs.research_team import astream_research_team
 
     messages = _history_to_messages(history)
+    img_list = images or []
 
-    # Retrieve long-term memories and profile for this user
     memory_context = (await asyncio.to_thread(retrieve_memories, user_id, query)) if memory_enabled else ""
     profile_context = build_user_profile_context(user_profile)
 
@@ -215,13 +239,19 @@ async def astream_graph_events(
     yield {"event": "agent_start", "data": {"agent": "ceo", "message": "Thinking..."}}
 
     doc_context = build_doc_context(has_documents)
+    has_images = bool(img_list)
+    image_context = build_image_context(has_images, len(img_list))
     history_text = format_history(messages, last_n=20)
-    route = await asyncio.to_thread(resolve_route, query, history_text, doc_context, has_documents)
+
+    route = await asyncio.to_thread(
+        resolve_route, query, history_text, doc_context, has_documents, has_images, image_context
+    )
 
     _status = {
         "knowledge_team": "Searching documents...",
         "research_team":  "Researching...",
         "general":        "Thinking...",
+        "vision_agent":   "Analyzing image...",
     }
     yield {"event": "agent_start", "data": {"agent": route, "message": _status.get(route, "Thinking...")}}
 
@@ -229,6 +259,10 @@ async def astream_graph_events(
     if route == "general":
         async for token in astream_general_agent(query, messages, user_tz=user_tz):
             yield {"event": "token", "data": {"agent": "general", "content": token}}
+
+    elif route == "vision_agent":
+        async for token in astream_vision_agent(query, img_list, messages):
+            yield {"event": "token", "data": {"agent": "vision_agent", "content": token}}
 
     elif route == "follow_up":
         recent_msgs = messages[-10:] if len(messages) > 10 else messages

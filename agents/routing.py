@@ -6,7 +6,7 @@ Extracted from orchestrator.py so routing logic lives in one place,
 is independently testable, and keeps orchestrator.py lean.
 
 Public API:
-    resolve_route(query, history_text, doc_context, has_documents) -> str
+    resolve_route(query, history_text, doc_context, has_documents, has_images, image_context) -> str
 """
 import re
 import logging
@@ -21,7 +21,7 @@ from prompts.orchestrator_prompts import ROUTER_SYSTEM
 
 logger = logging.getLogger(__name__)
 
-RouteLabel = Literal["knowledge_team", "research_team", "follow_up", "general"]
+RouteLabel = Literal["vision_agent", "knowledge_team", "research_team", "follow_up", "general"]
 
 
 # ---------------------------------------------------------------------------
@@ -68,17 +68,21 @@ _RESEARCH_PATTERNS = re.compile(
 )
 
 
-def _fast_route(query: str, has_history: bool) -> RouteLabel | None:
+def _fast_route(query: str, has_history: bool, has_images: bool = False) -> RouteLabel | None:
     """
-    Return a route label if intent is obvious from pattern matching alone,
+    Return a route label if intent is obvious from pattern matching / image presence alone,
     or None to fall through to the LLM router.
 
     Rules (in order):
-      1. Trivial greetings / pleasantries       → follow_up  (0 ms)
-      2. Explicit formatting / rephrase request → follow_up  (only needs history)
-      3. Explicit deep-research keywords        → research_team
-      4. Anything else                          → None  (let LLM decide)
+      1. Images present                         → vision_agent (0 ms)
+      2. Trivial greetings / pleasantries       → follow_up (0 ms)
+      3. Explicit formatting / rephrase request → follow_up (only needs history)
+      4. Explicit deep-research keywords        → research_team
+      5. Anything else                          → None (let LLM decide)
     """
+    if has_images:
+        return "vision_agent"
+
     stripped = query.strip()
 
     if _TRIVIAL_PATTERNS.match(stripped):
@@ -97,9 +101,15 @@ def _fast_route(query: str, has_history: bool) -> RouteLabel | None:
 # Hard gate — Python-enforced, cannot be bypassed by prompt injection
 # ---------------------------------------------------------------------------
 
-def _apply_hard_gates(route: RouteLabel, has_documents: bool) -> RouteLabel:
-    """knowledge_team requires documents; redirect to general if not available."""
+def _apply_hard_gates(route: RouteLabel, has_documents: bool, has_images: bool) -> RouteLabel:
+    """
+    Apply safety checks:
+    - knowledge_team requires documents; redirect to general if not available.
+    - vision_agent requires images; redirect to general if not present.
+    """
     if route == "knowledge_team" and not has_documents:
+        return "general"
+    if route == "vision_agent" and not has_images:
         return "general"
     return route
 
@@ -113,31 +123,34 @@ def resolve_route(
     history_text: str,
     doc_context: str,
     has_documents: bool,
+    has_images: bool = False,
+    image_context: str = "",
 ) -> RouteLabel:
     """
     Determine the correct agent route for a query.
 
     Strategy (in order):
-      1. Fast-path: regex pattern matching (0 ms, no API call)
+      1. Fast-path: image detection & regex pattern matching (0 ms, no API call)
       2. LLM routing: structured output call for ambiguous queries (~500 ms)
-      3. Hard gates: knowledge_team only reachable when documents are present
+      3. Hard gates: knowledge_team/vision_agent only reachable when assets present
       4. Crash-proof fallback: route to 'general' if LLM call fails
     """
     # Step 1: Fast-path
-    fast = _fast_route(query, has_history=bool(history_text))
+    fast = _fast_route(query, has_history=bool(history_text), has_images=has_images)
     if fast:
-        route = _apply_hard_gates(fast, has_documents)
-        logger.info("[Router] Fast-path: '%s' -> %s", query[:60], route)
+        route = _apply_hard_gates(fast, has_documents, has_images)
+        logger.info("[Router] Fast-path: '%s' (images=%s) -> %s", query[:60], has_images, route)
         return route
 
     # Step 2: LLM routing with crash-proof fallback
     try:
+        context_block = "\n".join(filter(None, [doc_context, image_context]))
         routing_messages = [
             SystemMessage(content=ROUTER_SYSTEM),
             HumanMessage(content=(
-                f"{doc_context}\n\nConversation so far:\n{history_text}\n\nLatest user message: {query}"
+                f"{context_block}\n\nConversation so far:\n{history_text}\n\nLatest user message: {query}"
                 if history_text else
-                f"{doc_context}\n\nUser message: {query}"
+                f"{context_block}\n\nUser message: {query}"
             )),
         ]
         decision: RouteDecision = router_llm.invoke(routing_messages)
@@ -148,6 +161,6 @@ def resolve_route(
         route = "general"
 
     # Step 3: Hard gate
-    route = _apply_hard_gates(route, has_documents)
+    route = _apply_hard_gates(route, has_documents, has_images)
     logger.info("[Router] Query: '%s' -> %s", query[:60], route)
     return route

@@ -57,6 +57,16 @@ def build_doc_context(has_documents: bool) -> str:
     return "CONTEXT: No documents are attached to this conversation. Do NOT route to `knowledge_team`."
 
 
+def build_image_context(has_images: bool, count: int = 0) -> str:
+    """Build the image-awareness context string injected into the CEO router prompt."""
+    if has_images:
+        return (
+            f"IMAGE CONTEXT: The user has attached {count} image(s) to this message. "
+            "Route to `vision_agent` for visual analysis, image description, diagram understanding, or OCR."
+        )
+    return "IMAGE CONTEXT: No images are attached to this message."
+
+
 def build_user_profile_context(user_row: dict | None) -> str:
     """Format user profile metadata (name, age, profession, location) into prompt context."""
     if not user_row:

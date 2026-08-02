@@ -49,10 +49,10 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
 
   // ── Core send (used by handleSend and handleRetry) ──────────────────────
 
-  const doSend = async (text) => {
+  const doSend = async (text, images = []) => {
     setError(null);
     setLastFailedMessage(null);
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
+    setMessages((prev) => [...prev, { role: 'user', content: text, images }]);
     setSending(true);
     isSendingRef.current = true;
 
@@ -69,7 +69,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
       let wasAborted = false;
 
       try {
-        await api.sendMessageStream(activeId, text, {
+        await api.sendMessageStream(activeId, text, images, {
           signal: controller.signal,
 
           onAgentStart: (data) => {
@@ -126,7 +126,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
       } else if (streamFailed) {
         // SSE failed — fall back to non-streaming REST
         setMessages((prev) => prev.slice(0, -1));
-        const res = await api.sendMessage(activeId, text);
+        const res = await api.sendMessage(activeId, text, images);
         setMessages((prev) => [...prev, {
           role: 'assistant',
           content: res.answer,
@@ -138,7 +138,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
 
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
-      setLastFailedMessage(text);
+      setLastFailedMessage({ text, images });
       // Remove empty optimistic placeholder
       setMessages((prev) => {
         const last = prev[prev.length - 1];
@@ -156,14 +156,14 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
 
   const handleRetry = async () => {
     if (!lastFailedMessage || sending) return;
-    const text = lastFailedMessage;
+    const { text, images } = typeof lastFailedMessage === 'object' ? lastFailedMessage : { text: lastFailedMessage, images: [] };
     // Remove the stale failed user message before re-sending
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last?.role === 'user' && last.content === text) return prev.slice(0, -1);
       return prev;
     });
-    await doSend(text);
+    await doSend(text, images);
   };
 
   return {

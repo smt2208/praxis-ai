@@ -62,6 +62,7 @@ async def chat(
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
             has_documents=has_documents,
+            images=body.images,
             memory_enabled=mem_enabled,
             user_profile=user_profile,
         )
@@ -126,6 +127,7 @@ async def chat_stream(
                 user_id=current_user["id"],
                 conversation_id=body.conversation_id,
                 has_documents=has_documents,
+                images=body.images,
                 user_tz=user_tz,
                 memory_enabled=mem_enabled,
                 user_profile=user_profile,
