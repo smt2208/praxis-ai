@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MessageSquarePlus, MessageSquare, LogOut, Cpu, ShieldAlert, Trash2, X, Check, Settings } from 'lucide-react';
+import { MessageSquarePlus, MessageSquare, LogOut, Trash2, X, Check, Settings } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { SettingsModal } from './SettingsModal';
+import { ThemeToggle } from '../common/ThemeToggle';
 
 export const Sidebar = ({
   conversations,
@@ -151,32 +152,35 @@ export const Sidebar = ({
             </div>
           </div>
 
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            title="Settings"
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: '6px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = 'var(--text-main)';
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = 'var(--text-muted)';
-              e.currentTarget.style.background = 'none';
-            }}
-          >
-            <Settings size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <ThemeToggle />
+
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              title="Settings"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--text-main)';
+                e.currentTarget.style.background = 'var(--bg-card-hover)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--text-muted)';
+                e.currentTarget.style.background = 'none';
+              }}
+            >
+              <Settings size={18} />
+            </button>
+          </div>
         </div>
 
         <button

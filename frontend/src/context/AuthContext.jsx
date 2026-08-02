@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { ToastNotification } from '../components/common/ToastNotification';
+import { AuthTransition } from '../components/common/AuthTransition';
 
 const AuthContext = createContext(null);
 
@@ -9,10 +10,22 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
   const [toast, setToast] = useState(null);
+  const [transition, setTransition] = useState(null); // { message: string }
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  // Show branded transition overlay then resolve
+  const runTransition = (message, durationMs = 1100) => {
+    return new Promise((resolve) => {
+      setTransition({ message });
+      setTimeout(() => {
+        setTransition(null);
+        resolve();
+      }, durationMs);
+    });
   };
 
   // Check auth state on mount
@@ -59,9 +72,13 @@ export const AuthProvider = ({ children }) => {
 
       // Fetch user profile
       const userData = await api.getCurrentUser();
+      const displayName = userData.full_name || userData.email?.split('@')[0] || 'there';
+
+      // Show branded transition overlay before revealing workspace
+      await runTransition(`Welcome back, ${displayName} ✨`, 1150);
+
       setUser(userData);
-      const displayName = userData.full_name || userData.email?.split('@')[0] || 'user';
-      showToast(`✨ Welcome back, ${displayName}! Workspace ready.`, 'login');
+      showToast(`Workspace ready, ${displayName}!`, 'login');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Login failed';
@@ -76,18 +93,19 @@ export const AuthProvider = ({ children }) => {
       const data = await api.register(email, password, fullName);
 
       if (data.needs_verification) {
-        // Clear any old session — user MUST verify email link before entering app
         logoutLocally();
         return { success: true, needs_verification: true };
       }
 
-      // Verification not required (should not happen currently, but defensive)
       localStorage.setItem('access_token', data.access_token);
       localStorage.setItem('refresh_token', data.refresh_token);
       const userData = await api.getCurrentUser();
+      const displayName = userData.full_name || userData.email?.split('@')[0] || 'there';
+
+      await runTransition(`Welcome to Praxis, ${displayName} 🚀`, 1200);
+
       setUser(userData);
-      const displayName = userData.full_name || userData.email?.split('@')[0] || 'user';
-      showToast(`🚀 Welcome to Praxis, ${displayName}! Your AI workspace is ready.`, 'register');
+      showToast(`Your AI workspace is ready!`, 'register');
       return { success: true };
     } catch (err) {
       const msg = err.message || 'Registration failed';
@@ -95,7 +113,6 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: msg };
     }
   };
-
 
   const logout = async (logoutAll = false) => {
     const refreshToken = localStorage.getItem('refresh_token');
@@ -106,8 +123,12 @@ export const AuthProvider = ({ children }) => {
         console.warn('Logout endpoint warning:', e);
       }
     }
+
+    // Show goodbye transition before clearing state
+    await runTransition('Signing you out...', 800);
+
     logoutLocally();
-    showToast('👋 Logged out successfully. See you soon!', 'logout');
+    showToast('Signed out. See you soon! 👋', 'logout');
   };
 
   const updateProfile = async (profileData) => {
@@ -165,6 +186,7 @@ export const AuthProvider = ({ children }) => {
       }}
     >
       <ToastNotification toast={toast} onClose={() => setToast(null)} />
+      {transition && <AuthTransition message={transition.message} />}
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/common/Navbar';
 import { HeroSection } from './components/landing/HeroSection';
 import { ArchitectureShowcase } from './components/landing/ArchitectureShowcase';
@@ -87,8 +88,10 @@ const MainLayout = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#090d16', color: '#38bdf8' }}>
-        <div>Loading Praxis...</div>
+      <div className="app-loading">
+        <img src="/logo.png" alt="Praxis" style={{ width: 44, height: 44, borderRadius: 12 }} />
+        <div className="app-loading-ring" />
+        <p className="app-loading-text">Loading Praxis...</p>
       </div>
     );
   }
@@ -149,30 +152,36 @@ export default function App() {
   // Render the password reset page for users arriving from the reset email link
   if (currentPath === '/reset-password') {
     return (
-      <ResetPasswordPage
-        onGoToLogin={() => {
-          window.history.pushState({}, '', '/');
-          window.location.reload();
-        }}
-      />
+      <ThemeProvider>
+        <ResetPasswordPage
+          onGoToLogin={() => {
+            window.history.pushState({}, '', '/');
+            window.location.reload();
+          }}
+        />
+      </ThemeProvider>
     );
   }
 
   // Render the email verification page for users arriving from the email link
   if (currentPath === '/verify-email') {
     return (
-      <VerifyEmailPage
-        onGoToLogin={() => {
-          window.history.pushState({}, '', '/');
-          window.location.reload();
-        }}
-      />
+      <ThemeProvider>
+        <VerifyEmailPage
+          onGoToLogin={() => {
+            window.history.pushState({}, '', '/');
+            window.location.reload();
+          }}
+        />
+      </ThemeProvider>
     );
   }
 
   return (
-    <AuthProvider>
-      <MainLayout />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MainLayout />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
