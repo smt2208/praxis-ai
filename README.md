@@ -1,8 +1,8 @@
 # Praxis 🧠
 
-**Praxis** is a state-of-the-art, hierarchical Multi-Agent AI Platform with real-time **Server-Sent Events (SSE) streaming**, **Enterprise Document RAG**, and **Deep Multi-Domain Research**.
+**Praxis** is a state-of-the-art, hierarchical Multi-Agent AI Platform with real-time **Server-Sent Events (SSE) streaming**, **Enterprise Document RAG**, **Multimodal Vision Intelligence**, and **Deep Multi-Domain Research**.
 
-Operating like a digital corporation, a top-level **CEO Orchestrator** analyzes user intent and dynamically routes queries to specialized AI departments (**Enterprise Knowledge Team**, **Deep Research Team**, **General Agent**, or **Conversational Follow-Up Agent**) for precise, hallucination-resistant responses.
+Operating like a digital corporation, a top-level **CEO Orchestrator** analyzes user intent and dynamically routes queries to specialized AI departments (**Multimodal Vision Agent**, **Enterprise Knowledge Team**, **Deep Research Team**, **General Agent**, or **Conversational Follow-Up Agent**) for precise, hallucination-resistant responses.
 
 ---
 
