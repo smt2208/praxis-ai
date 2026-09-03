@@ -7,7 +7,7 @@ Startup sequence (via lifespan):
   3. Compile LangGraph orchestrator (at import time in orchestrator.py)
   4. Attach rate limiter & middleware
   5. Include modular APIRouters
-  6. App ready
+  6. App ready (v1.1.0-prod)
 """
 from contextlib import asynccontextmanager
 import logging
