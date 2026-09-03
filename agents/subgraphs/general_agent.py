@@ -35,11 +35,11 @@ _llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0.2)
 # --- Agent (built once, reused on every call) --------------------------
 
 def _build_general_agent():
-    from langgraph.prebuilt import create_react_agent
-    return create_react_agent(
-        _llm,
+    from langchain.agents import create_agent
+    return create_agent(
+        model=_llm,
         tools=[tavily_tool, tavily_news_tool],
-        prompt=GENERAL_SYSTEM,
+        system_prompt=GENERAL_SYSTEM,
     )
 
 

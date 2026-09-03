@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 from app.config import DEFAULT_MODEL
 from agents.tools import tavily_tool
@@ -74,12 +74,12 @@ def parallel_fetch_node(state: KnowledgeState) -> dict:
         search_query = f"Context: {state['history_summary']}\nQuestion: {state['query']}"
 
     async def _run_rag() -> str:
-        agent = create_react_agent(_llm, [rag_tool])
+        agent = create_agent(model=_llm, tools=[rag_tool])
         result = await agent.ainvoke({"messages": [HumanMessage(content=search_query)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content
 
     async def _run_web() -> str:
-        agent = create_react_agent(_llm, [tavily_tool])
+        agent = create_agent(model=_llm, tools=[tavily_tool])
         prompt = f"Search for the latest information about: {search_query}"
         result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content

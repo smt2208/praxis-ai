@@ -124,14 +124,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
           return prev;
         });
       } else if (streamFailed) {
-        // SSE failed — fall back to non-streaming REST
-        setMessages((prev) => prev.slice(0, -1));
-        const res = await api.sendMessage(activeId, text, images);
-        setMessages((prev) => [...prev, {
-          role: 'assistant',
-          content: res.answer,
-          route_taken: res.route_taken,
-        }]);
+        throw new Error('Streaming failed to complete. Please try again.');
       }
 
       if (onRefreshConversations) setTimeout(onRefreshConversations, 1000);

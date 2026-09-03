@@ -65,7 +65,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
         {"type": "status", "message": "..."}
         {"type": "token",  "content": "..."}
     """
-    from langgraph.prebuilt import create_react_agent
+    from langchain.agents import create_agent
 
     history_summary = format_history(history)
 
@@ -91,7 +91,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
     rag_tool = build_hybrid_retriever(user_id=user_id, conversation_id=conversation_id)
 
     async def _fetch_rag() -> str:
-        agent = create_react_agent(_llm, [rag_tool])
+        agent = create_agent(model=_llm, tools=[rag_tool])
         result = await agent.ainvoke({"messages": [HumanMessage(content=standalone_query)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content
 
@@ -108,7 +108,7 @@ async def astream_knowledge_team(query: str, user_id: str, conversation_id: str,
         yield {"type": "status", "message": "Searching web..."}
 
         async def _fetch_web() -> str:
-            agent = create_react_agent(_llm, [tavily_tool])
+            agent = create_agent(model=_llm, tools=[tavily_tool])
             from datetime import datetime
             date_str = datetime.now().strftime("%A, %B %d, %Y")
             sys_msg = SystemMessage(content=f"CURRENT DATE: {date_str}. Use this as reference for 'today' or 'latest'.")

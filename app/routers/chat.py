@@ -18,76 +18,14 @@ from app.db import (
     get_history, save_message, get_conversation_has_documents,
     get_conversation_title, verify_conversation_ownership, get_memory_enabled, get_user_by_id,
 )
-from app.schemas import ChatRequest, ChatResponse
+from app.schemas import ChatRequest
 from app.services.chat import auto_generate_title
 from app.services.memory import store_memories_background
-from agents.orchestrator import invoke_graph, astream_graph_events
+from agents.orchestrator import astream_graph_events
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["Chat"])
-
-
-@router.post("/chat", response_model=ChatResponse)
-@limiter.limit("7/minute")
-async def chat(
-    request: Request,
-    body: ChatRequest,
-    pool: asyncpg.Pool = Depends(get_pool),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    Main chat endpoint.
-    - Reads user identity from JWT.
-    - Fetches clean history from DB, runs the multi-agent graph, persists results.
-    """
-    owns = await verify_conversation_ownership(pool, body.conversation_id, current_user["id"])
-    if not owns:
-        raise HTTPException(status_code=404, detail="Conversation not found.")
-
-    history, has_documents, mem_enabled, user_profile = await asyncio.gather(
-        get_history(pool, body.conversation_id, limit=20),
-        get_conversation_has_documents(pool, body.conversation_id),
-        get_memory_enabled(pool, current_user["id"]),
-        get_user_by_id(pool, current_user["id"]),
-    )
-
-    await save_message(pool, body.conversation_id, "user", body.message)
-
-    try:
-        result = await asyncio.to_thread(
-            invoke_graph,
-            query=body.message,
-            history=history,
-            user_id=current_user["id"],
-            conversation_id=body.conversation_id,
-            has_documents=has_documents,
-            images=body.images,
-            memory_enabled=mem_enabled,
-            user_profile=user_profile,
-        )
-    except Exception as e:
-        logger.error("[Chat] Exception: %s", str(e))
-        raise HTTPException(status_code=500, detail="An error occurred while processing your request. Please try again.")
-
-    await save_message(pool, body.conversation_id, "assistant", result["answer"])
-
-    # Store memories in background if enabled
-    if mem_enabled:
-        asyncio.create_task(store_memories_background(current_user["id"], body.message, result["answer"]))
-
-    try:
-        current_title = await get_conversation_title(pool, body.conversation_id)
-        if current_title == "New Conversation":
-            asyncio.create_task(auto_generate_title(pool, body.conversation_id, body.message))
-    except Exception:
-        pass
-
-    return ChatResponse(
-        conversation_id=body.conversation_id,
-        answer=result["answer"],
-        route_taken=result["route"],
-    )
 
 
 @router.post("/chat/stream")

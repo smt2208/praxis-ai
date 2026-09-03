@@ -17,7 +17,7 @@ from typing import TypedDict, Annotated
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
@@ -90,7 +90,7 @@ def researcher_node(state: ResearchState) -> dict:
 
     logger.info("[Researcher] Step %d/%d: '%s'", step_idx + 1, len(plan), current_step)
 
-    agent = create_react_agent(_llm, [arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
+    agent = create_agent(model=_llm, tools=[arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
     sys_msg = SystemMessage(content=f"CURRENT DATE: {current_date}. Use this for 'today' / 'latest'.")
     prompt = RESEARCHER_HUMAN.format(
         query=state["query"],
