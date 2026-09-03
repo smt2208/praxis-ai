@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Square, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X, Menu, RotateCcw, Image as ImageIcon, FileUp, PanelLeft } from 'lucide-react';
+import { Send, Square, Cpu, Sparkles, MessageSquare, Plus, Loader2, FileText, X, Menu, RotateCcw, Image as ImageIcon, FileUp, PanelLeft, Paperclip } from 'lucide-react';
 import { MessageItem } from './MessageItem';
+import { AttachmentsPanel } from './AttachmentsPanel';
 import { api } from '../../services/api';
 import { useChatStream } from '../../hooks/useChatStream';
 import { useFileUpload } from '../../hooks/useFileUpload';
@@ -13,6 +14,9 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
   // Multimodal image state
   const [selectedImages, setSelectedImages] = useState([]); // array of base64 data URIs
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+
+  // Right-side attachments panel
+  const [attachmentsPanelOpen, setAttachmentsPanelOpen] = useState(false);
 
   const messagesEndRef       = useRef(null);
   const messagesContainerRef  = useRef(null);
@@ -130,6 +134,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
       setActiveFiles([]);
       setSelectedImages([]);
       setLoadingHistory(false);
+      setAttachmentsPanelOpen(false);
       return;
     }
 
@@ -179,7 +184,10 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   // ── Render ──────────────────────────────────────────────────────────────
 
+  const hasAttachments = activeFiles.length > 0 || selectedImages.length > 0 || ingesting;
+
   return (
+    <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden' }}>
     <main className="chat-main">
 
       {/* ── Header ── */}
@@ -197,6 +205,17 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             {activeTitle || 'New Conversation'}
           </span>
         </div>
+
+        {/* Attachments panel toggle */}
+        <button
+          className={`attach-panel-toggle-btn${attachmentsPanelOpen ? ' active' : ''}`}
+          onClick={() => setAttachmentsPanelOpen(prev => !prev)}
+          title={attachmentsPanelOpen ? 'Hide attachments' : 'Show attachments'}
+          aria-label="Toggle attachments panel"
+        >
+          <Paperclip size={18} />
+          {hasAttachments && <span className="attach-badge" aria-hidden="true" />}
+        </button>
       </div>
 
       {/* ── Messages ── */}
@@ -266,52 +285,6 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           }}>
             <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
             <span>Uploading <strong>{uploadingFileName}</strong>...</span>
-          </div>
-        )}
-
-        {/* Active document pills */}
-        {activeFiles.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-            {activeFiles.map((f, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                fontSize: '0.78rem', color: 'var(--accent-emerald)',
-                background: 'rgba(52, 211, 153, 0.12)', border: '1px solid rgba(52, 211, 153, 0.25)',
-                padding: '4px 10px', borderRadius: '20px',
-              }}>
-                <FileText size={12} />
-                <span>{f.name}</span>
-                <button onClick={() => removeFile(i)} title="Remove from view"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: '0 2px', lineHeight: 1 }}>
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Selected Image Thumbnails Strip */}
-        {selectedImages.length > 0 && (
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-            {selectedImages.map((b64, idx) => (
-              <div key={idx} style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
-                <img src={b64} alt={`Upload ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                <button
-                  type="button"
-                  onClick={() => removeImage(idx)}
-                  style={{
-                    position: 'absolute', top: '2px', right: '2px',
-                    background: 'rgba(0, 0, 0, 0.65)', color: '#ffffff',
-                    border: 'none', borderRadius: '50%', width: '18px', height: '18px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}
-                  title="Remove image"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
           </div>
         )}
 
@@ -424,5 +397,18 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         </form>
       </div>
     </main>
-  );
+
+    {/* ── Right-side Attachments Panel ── */}
+    <AttachmentsPanel
+      isOpen={attachmentsPanelOpen}
+      onClose={() => setAttachmentsPanelOpen(false)}
+      activeFiles={activeFiles}
+      selectedImages={selectedImages}
+      ingesting={ingesting}
+      uploadingFileName={uploadingFileName}
+      onRemoveFile={removeFile}
+      onRemoveImage={removeImage}
+    />
+  </div>
+);
 };
