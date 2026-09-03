@@ -2,16 +2,21 @@
 main.py — FastAPI application entry point
 
 Startup sequence (via lifespan):
-  1. Load & validate settings
-  2. Connect asyncpg pool → create / migrate tables
-  3. Compile LangGraph orchestrator (at import time in orchestrator.py)
-  4. Attach rate limiter & middleware
-  5. Include modular APIRouters
-  6. App ready (v1.1.0-prod)
+  1. Configure structured logging
+  2. Load & validate settings
+  3. Connect asyncpg pool → create / migrate tables
+  4. Compile LangGraph orchestrator (at import time in orchestrator.py)
+  5. Attach rate limiter & middleware
+  6. Include modular APIRouters
+  7. App ready (v1.1.0-prod)
 """
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
+
+# ── Logging must be configured before any other imports emit log records ──
+from app.utils.logging import configure_logging
+configure_logging()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -30,6 +35,7 @@ from app.routers.ingest import router as ingest_router
 from app.routers.memory import router as memory_router
 from app.services.warmup import warmup_all_services
 from app.middleware.rate_limit import limiter, rate_limit_handler
+from app.middleware.request_logging import RequestLoggingMiddleware
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -69,6 +75,9 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Request ID propagation + structured access logging
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # --- Global User-Friendly Exception Handlers ---------------------------

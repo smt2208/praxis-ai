@@ -4,6 +4,7 @@ import { MessageItem } from './MessageItem';
 import { api } from '../../services/api';
 import { useChatStream } from '../../hooks/useChatStream';
 import { useFileUpload } from '../../hooks/useFileUpload';
+import { compressImage } from '../../utils/imageCompressor';
 
 export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations, onSelectActiveConv, onToggleSidebar, sidebarOpen }) => {
   const [inputMessage, setInputMessage] = useState('');
@@ -85,21 +86,30 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
 
   // ── Image selection handler ─────────────────────────────────────────────
 
-  const handleImageSelect = (e) => {
+  const handleImageSelect = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
     setAttachMenuOpen(false);
 
-    files.slice(0, 5 - selectedImages.length).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const b64 = event.target.result;
+    const eligible = files
+      .filter((f) => f.type.startsWith('image/'))
+      .slice(0, 5 - selectedImages.length);
+
+    for (const file of eligible) {
+      try {
+        // Compress if > 1 MB to prevent backend payload issues
+        const b64 = await compressImage(file);
         setSelectedImages((prev) => (prev.length < 5 ? [...prev, b64] : prev));
-      };
-      reader.readAsDataURL(file);
-    });
+      } catch (err) {
+        console.warn('[handleImageSelect] Compression failed, using original:', err);
+        // Fallback: read raw (may be large but won't silently fail)
+        const reader = new FileReader();
+        reader.onload = (ev) =>
+          setSelectedImages((prev) => (prev.length < 5 ? [...prev, ev.target.result] : prev));
+        reader.readAsDataURL(file);
+      }
+    }
 
     if (e.target) e.target.value = '';
   };
