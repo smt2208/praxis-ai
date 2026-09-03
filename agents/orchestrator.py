@@ -8,6 +8,7 @@ and returns the final answer.  No checkpointer — fully stateless.
 Routing logic lives in agents/routing.py.
 """
 import logging
+import asyncio
 from typing import TypedDict, Literal, Annotated
 
 from langchain_openai import ChatOpenAI
@@ -18,17 +19,18 @@ from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
 from agents.utils import format_history, build_doc_context, build_image_context, build_user_profile_context
-from agents.routing import resolve_route
+from agents.routing import resolve_route, RouteDecision
 from agents.subgraphs.knowledge_team import run_knowledge_team
 from agents.subgraphs.research_team import run_research_team
 from agents.subgraphs.general_agent import run_general_agent
 from agents.subgraphs.vision_agent import run_vision_agent, astream_vision_agent
-from prompts.orchestrator_prompts import FOLLOW_UP_SYSTEM
+from prompts.orchestrator_prompts import FOLLOW_UP_SYSTEM, MULTI_AGENT_SYNTHESIZER_SYSTEM
 from app.services.memory import retrieve_memories
 
 logger = logging.getLogger(__name__)
 
 _followup_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0.7)
+_synthesizer_llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +61,7 @@ def ceo_node(state: OrchestratorState) -> dict:
     has_images = bool(images)
     image_context = build_image_context(has_images, len(images))
 
-    route = resolve_route(
+    decision: RouteDecision = resolve_route(
         state["query"],
         history_text,
         doc_context,
@@ -67,7 +69,8 @@ def ceo_node(state: OrchestratorState) -> dict:
         has_images=has_images,
         image_context=image_context,
     )
-    return {"route": route}
+    # Store primary route as string for graph routing
+    return {"route": decision.primary_route}
 
 
 def knowledge_team_node(state: OrchestratorState) -> dict:
@@ -165,6 +168,103 @@ def _history_to_messages(history: list[dict]) -> list[BaseMessage]:
 
 
 # ---------------------------------------------------------------------------
+# Hybrid Fan-Out: parallel execution of two departments
+# ---------------------------------------------------------------------------
+
+async def _run_hybrid_fanout(
+    query: str,
+    primary_route: str,
+    secondary_route: str,
+    messages: list,
+    user_id: str,
+    conversation_id: str,
+    user_tz: str = None,
+):
+    """
+    Run two departments concurrently (asyncio.gather) and stream a unified synthesis.
+
+    Yields SSE event dicts:
+        {"event": "agent_start", "data": {...}}
+        {"event": "token",       "data": {...}}
+    """
+    from agents.subgraphs.general_agent import astream_general_agent
+    from agents.subgraphs.knowledge_team import astream_knowledge_team
+    from agents.subgraphs.research_team import astream_research_team
+
+    yield {"event": "agent_start", "data": {
+        "agent": "hybrid",
+        "message": "Searching documents and live web in parallel...",
+    }}
+
+    async def _collect_stream(stream_gen) -> str:
+        """Drain a streaming generator and collect the full text output."""
+        parts = []
+        async for evt in stream_gen:
+            if evt.get("type") == "token":
+                parts.append(evt["content"])
+        return "".join(parts)
+
+    async def _run_department(route: str) -> str:
+        if route == "knowledge_team":
+            # Use collect_context mode to get raw context, then collect synthesis
+            ctx_result = {}
+            async for evt in astream_knowledge_team(
+                query, user_id=user_id, conversation_id=conversation_id,
+                history=messages, collect_context=False,
+            ):
+                if evt.get("type") == "token":
+                    ctx_result.setdefault("tokens", []).append(evt["content"])
+            return "".join(ctx_result.get("tokens", []))
+        elif route == "general":
+            parts = []
+            async for token in astream_general_agent(query, messages, user_tz=user_tz):
+                parts.append(token)
+            return "".join(parts)
+        elif route == "research_team":
+            parts = []
+            async for evt in astream_research_team(query, history=messages):
+                if evt.get("type") == "token":
+                    parts.append(evt["content"])
+            return "".join(parts)
+        return ""
+
+    # Execute both departments concurrently
+    primary_result, secondary_result = await asyncio.gather(
+        _run_department(primary_route),
+        _run_department(secondary_route),
+        return_exceptions=True,
+    )
+
+    if isinstance(primary_result, Exception):
+        logger.error("[Hybrid] Primary route failed: %s", primary_result)
+        primary_result = ""
+    if isinstance(secondary_result, Exception):
+        logger.error("[Hybrid] Secondary route failed: %s", secondary_result)
+        secondary_result = ""
+
+    # Stream unified synthesis
+    yield {"event": "agent_start", "data": {"agent": "hybrid", "message": "Synthesizing findings..."}}
+
+    synth_prompt = (
+        f"USER QUERY:\n{query}\n\n"
+        f"--- DOCUMENT INTELLIGENCE ({primary_route}) ---\n{primary_result}\n\n"
+        f"--- WEB / RESEARCH INTELLIGENCE ({secondary_route}) ---\n{secondary_result}\n\n"
+        "Synthesize both into one cohesive, well-structured answer."
+    )
+    async for chunk in _synthesizer_llm.astream([
+        SystemMessage(content=MULTI_AGENT_SYNTHESIZER_SYSTEM),
+        HumanMessage(content=synth_prompt),
+    ]):
+        content = chunk.content
+        if isinstance(content, str) and content:
+            yield {"event": "token", "data": {"agent": "hybrid", "content": content}}
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                    yield {"event": "token", "data": {"agent": "hybrid", "content": block["text"]}}
+
+
+# ---------------------------------------------------------------------------
 # Public entry points (called by FastAPI routers)
 # ---------------------------------------------------------------------------
 
@@ -220,7 +320,6 @@ async def astream_graph_events(
     Async generator for SSE streaming.
     Yields dicts: {"event": str, "data": dict}
     """
-    import asyncio
     from agents.subgraphs.general_agent import astream_general_agent
     from agents.subgraphs.knowledge_team import astream_knowledge_team
     from agents.subgraphs.research_team import astream_research_team
@@ -243,10 +342,28 @@ async def astream_graph_events(
     image_context = build_image_context(has_images, len(img_list))
     history_text = format_history(messages, last_n=20)
 
-    route = await asyncio.to_thread(
+    decision: RouteDecision = await asyncio.to_thread(
         resolve_route, query, history_text, doc_context, has_documents, has_images, image_context
     )
+    route = decision.primary_route
 
+    # ── Step 2: Hybrid or Single-path execution ────────────────────────
+    if decision.is_hybrid and decision.secondary_route:
+        # Parallel fan-out — both departments run concurrently
+        async for evt in _run_hybrid_fanout(
+            query=query,
+            primary_route=route,
+            secondary_route=decision.secondary_route,
+            messages=messages,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            user_tz=user_tz,
+        ):
+            yield evt
+        yield {"event": "done", "data": {"route": f"{route}+{decision.secondary_route}"}}
+        return
+
+    # Single-path execution
     _status = {
         "knowledge_team": "Searching documents...",
         "research_team":  "Researching...",
@@ -255,7 +372,6 @@ async def astream_graph_events(
     }
     yield {"event": "agent_start", "data": {"agent": route, "message": _status.get(route, "Thinking...")}}
 
-    # ── Step 2: Execute department ──────────────────────────────────────
     if route == "general":
         async for token in astream_general_agent(query, messages, user_tz=user_tz):
             yield {"event": "token", "data": {"agent": "general", "content": token}}

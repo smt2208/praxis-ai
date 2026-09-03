@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Default LLM model used across all agents — change once here to update everywhere
 DEFAULT_MODEL = "gpt-5.4-mini-2026-03-17"
 
+# Fast / cheap model for lightweight checks (evaluator, grading)
+FAST_MODEL = "gpt-5.4-nano"
+
 
 class Settings(BaseSettings):
     # API

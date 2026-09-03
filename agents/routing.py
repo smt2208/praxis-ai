@@ -6,11 +6,11 @@ Extracted from orchestrator.py so routing logic lives in one place,
 is independently testable, and keeps orchestrator.py lean.
 
 Public API:
-    resolve_route(query, history_text, doc_context, has_documents, has_images, image_context) -> str
+    resolve_route(query, history_text, doc_context, has_documents, has_images, image_context) -> RouteDecision
 """
 import re
 import logging
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -22,6 +22,7 @@ from prompts.orchestrator_prompts import ROUTER_SYSTEM
 logger = logging.getLogger(__name__)
 
 RouteLabel = Literal["vision_agent", "knowledge_team", "research_team", "follow_up", "general"]
+SecondaryLabel = Literal["general", "knowledge_team", "research_team"]
 
 
 # ---------------------------------------------------------------------------
@@ -29,8 +30,17 @@ RouteLabel = Literal["vision_agent", "knowledge_team", "research_team", "follow_
 # ---------------------------------------------------------------------------
 
 class RouteDecision(BaseModel):
-    """The CEO must output exactly this schema — no free-form text."""
-    route: RouteLabel
+    """
+    The CEO must output exactly this schema — no free-form text.
+
+    primary_route:  The main department to handle the query.
+    secondary_route: An optional second department for hybrid cross-modal queries
+                     (e.g., compare document with live web search).
+    is_hybrid:      True only when both primary AND secondary must run in parallel.
+    """
+    primary_route: RouteLabel
+    secondary_route: Optional[SecondaryLabel] = None
+    is_hybrid: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +78,9 @@ _RESEARCH_PATTERNS = re.compile(
 )
 
 
-def _fast_route(query: str, has_history: bool, has_images: bool = False) -> RouteLabel | None:
+def _fast_route(query: str, has_history: bool, has_images: bool = False) -> RouteDecision | None:
     """
-    Return a route label if intent is obvious from pattern matching / image presence alone,
+    Return a RouteDecision if intent is obvious from pattern matching / image presence alone,
     or None to fall through to the LLM router.
 
     Rules (in order):
@@ -81,18 +91,18 @@ def _fast_route(query: str, has_history: bool, has_images: bool = False) -> Rout
       5. Anything else                          → None (let LLM decide)
     """
     if has_images:
-        return "vision_agent"
+        return RouteDecision(primary_route="vision_agent")
 
     stripped = query.strip()
 
     if _TRIVIAL_PATTERNS.match(stripped):
-        return "follow_up"
+        return RouteDecision(primary_route="follow_up")
 
     if has_history and _FOLLOW_UP_PATTERNS.match(stripped):
-        return "follow_up"
+        return RouteDecision(primary_route="follow_up")
 
     if _RESEARCH_PATTERNS.search(stripped):
-        return "research_team"
+        return RouteDecision(primary_route="research_team")
 
     return None
 
@@ -101,17 +111,28 @@ def _fast_route(query: str, has_history: bool, has_images: bool = False) -> Rout
 # Hard gate — Python-enforced, cannot be bypassed by prompt injection
 # ---------------------------------------------------------------------------
 
-def _apply_hard_gates(route: RouteLabel, has_documents: bool, has_images: bool) -> RouteLabel:
+def _apply_hard_gates(decision: RouteDecision, has_documents: bool, has_images: bool) -> RouteDecision:
     """
     Apply safety checks:
     - knowledge_team requires documents; redirect to general if not available.
     - vision_agent requires images; redirect to general if not present.
+    - If hybrid secondary is knowledge_team but no documents → drop secondary.
     """
-    if route == "knowledge_team" and not has_documents:
-        return "general"
-    if route == "vision_agent" and not has_images:
-        return "general"
-    return route
+    primary = decision.primary_route
+    secondary = decision.secondary_route
+
+    if primary == "knowledge_team" and not has_documents:
+        primary = "general"
+        secondary = None
+    elif primary == "vision_agent" and not has_images:
+        primary = "general"
+        secondary = None
+
+    if secondary == "knowledge_team" and not has_documents:
+        secondary = None
+
+    is_hybrid = bool(secondary) and secondary != primary
+    return RouteDecision(primary_route=primary, secondary_route=secondary if is_hybrid else None, is_hybrid=is_hybrid)
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +146,7 @@ def resolve_route(
     has_documents: bool,
     has_images: bool = False,
     image_context: str = "",
-) -> RouteLabel:
+) -> RouteDecision:
     """
     Determine the correct agent route for a query.
 
@@ -138,9 +159,9 @@ def resolve_route(
     # Step 1: Fast-path
     fast = _fast_route(query, has_history=bool(history_text), has_images=has_images)
     if fast:
-        route = _apply_hard_gates(fast, has_documents, has_images)
-        logger.info("[Router] Fast-path: '%s' (images=%s) -> %s", query[:60], has_images, route)
-        return route
+        decision = _apply_hard_gates(fast, has_documents, has_images)
+        logger.info("[Router] Fast-path: '%s' (images=%s) -> %s", query[:60], has_images, decision.primary_route)
+        return decision
 
     # Step 2: LLM routing with crash-proof fallback
     try:
@@ -154,13 +175,17 @@ def resolve_route(
             )),
         ]
         decision: RouteDecision = router_llm.invoke(routing_messages)
-        route = decision.route
     except Exception as exc:
         # Step 4: Never let a routing failure crash the request
         logger.error("[Router] LLM routing failed, falling back to 'general': %s", exc)
-        route = "general"
+        decision = RouteDecision(primary_route="general")
 
     # Step 3: Hard gate
-    route = _apply_hard_gates(route, has_documents, has_images)
-    logger.info("[Router] Query: '%s' -> %s", query[:60], route)
-    return route
+    decision = _apply_hard_gates(decision, has_documents, has_images)
+    logger.info(
+        "[Router] Query: '%s' -> %s%s",
+        query[:60],
+        decision.primary_route,
+        f" + {decision.secondary_route} (hybrid)" if decision.is_hybrid else "",
+    )
+    return decision

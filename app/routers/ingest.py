@@ -53,6 +53,9 @@ async def ingest(
         )
         await mark_conversation_has_documents(pool, body.conversation_id)
         await add_conversation_document(pool, body.conversation_id, filename)
+    except ValueError as ve:
+        logger.warning("[ingestion] URL ingestion validation error: %s", str(ve))
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error("[ingestion] URL ingestion failed: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to ingest document from URL. Please check the URL and try again.")
@@ -107,6 +110,9 @@ async def ingest_file(
         )
         await mark_conversation_has_documents(pool, conversation_id)
         await add_conversation_document(pool, conversation_id, filename)
+    except ValueError as ve:
+        logger.warning("[ingestion] File ingestion validation error: %s", str(ve))
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error("[ingestion] File ingestion failed: %s", str(e))
         raise HTTPException(status_code=500, detail="Failed to parse and store uploaded file. Please verify the file format and try again.")

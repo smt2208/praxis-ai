@@ -37,10 +37,12 @@ export function useFileUpload({ ensureActiveConversation, setError, onRefreshCon
         setError(`'${file.name}' is already in this conversation. Try a different conversation or rename the file.`);
       } else if (msg.includes('413') || msg.toLowerCase().includes('too large')) {
         setError('File is too large. Please upload a smaller document (max ~10 MB).');
+      } else if (msg.includes('422') || msg.toLowerCase().includes('readable text')) {
+        setError(msg.length < 180 ? msg : 'The server could not extract readable text from this file. Try a text-based PDF or DOCX.');
       } else if (msg.includes('500')) {
-        setError('The server could not process this file. Try a different format (PDF, DOCX, TXT).');
+        setError('The server encountered an error processing this file. Try a different format (PDF, DOCX, TXT).');
       } else {
-        setError('File upload failed. Please check the file and try again.');
+        setError(msg || 'File upload failed. Please check the file and try again.');
       }
     } finally {
       setIngesting(false);

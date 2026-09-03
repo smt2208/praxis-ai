@@ -76,18 +76,17 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
             import pymupdf
             doc = pymupdf.open(str(file_path))
             pages = []
-            total_pages = doc.page_count
             for page in doc:
                 text = page.get_text()
-                if text.strip():
-                    pages.append(text)
+                if text and text.strip():
+                    pages.append(text.strip())
             doc.close()
-            if pages and (total_pages == 0 or len(pages) / total_pages >= 0.6):
+            if pages:
                 return pages
         except ImportError:
-            pass
-        except Exception:
-            pass
+            logger.debug("[ingestion] PyMuPDF not installed, skipping local PDF extraction.")
+        except Exception as exc:
+            logger.warning("[ingestion] PyMuPDF local extraction error: %s", exc)
 
     if ext == ".docx":
         try:
@@ -96,9 +95,9 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
             full_text = "\n".join(p.text for p in docx.paragraphs if p.text.strip())
             return [full_text] if full_text.strip() else None
         except ImportError:
-            pass
-        except Exception:
-            pass
+            logger.debug("[ingestion] python-docx not installed, skipping DOCX extraction.")
+        except Exception as exc:
+            logger.warning("[ingestion] python-docx extraction error: %s", exc)
 
     return None
 
@@ -106,17 +105,26 @@ def _try_fast_local_extract(file_path: Path) -> list[str] | None:
 # --- Step 2b: LlamaParse cloud extraction (fallback) -------------------
 
 def _llamaparse_extract(file_path: Path) -> list[str]:
-    """Use LlamaParse with fast_mode=True to extract text from complex docs."""
-    from llama_parse import LlamaParse
-    parser = LlamaParse(
-        api_key=settings.llama_cloud_api_key,
-        result_type="markdown",
-        fast_mode=True,
-        verbose=False,
-        num_workers=4,
-    )
-    documents = parser.load_data(str(file_path))
-    return [doc.text for doc in documents if doc.text.strip()]
+    """Use LlamaParse with fast_mode=True to extract text from complex or scanned docs."""
+    api_key = (settings.llama_cloud_api_key or "").strip()
+    if not api_key or api_key.startswith("llx-...") or len(api_key) < 10:
+        logger.warning("[ingestion] LLAMA_CLOUD_API_KEY is not configured or is a placeholder.")
+        return []
+
+    try:
+        from llama_parse import LlamaParse
+        parser = LlamaParse(
+            api_key=api_key,
+            result_type="markdown",
+            fast_mode=True,
+            verbose=False,
+            num_workers=4,
+        )
+        documents = parser.load_data(str(file_path))
+        return [doc.text.strip() for doc in documents if doc.text and doc.text.strip()]
+    except Exception as exc:
+        logger.error("[ingestion] LlamaParse cloud extraction failed: %s", exc)
+        return []
 
 
 # --- Step 2: Unified parse dispatcher ----------------------------------
@@ -124,17 +132,36 @@ def _llamaparse_extract(file_path: Path) -> list[str]:
 @traceable(name="Parse Document", run_type="parser")
 def parse_document(file_path: Path) -> list[str]:
     """
-    Smart two-path parser:
-      1. Try fast local extraction first (milliseconds, no API cost).
-      2. Fall back to LlamaParse (seconds) only when local extraction fails.
+    Smart two-path parser with resilient fallback:
+      1. Try fast local extraction first (PyMuPDF / python-docx / txt) - zero latency & cost.
+      2. If local extraction succeeded with substantial text, return immediately.
+      3. If local extraction yielded no text (scanned PDF, PPTX, etc.), fall back to LlamaParse.
+      4. If LlamaParse succeeds, return cloud-parsed markdown.
+      5. If LlamaParse fails/unconfigured but partial local text exists, use local text.
+      6. If both produce 0 text, raise a clear descriptive ValueError.
     """
-    pages = _try_fast_local_extract(file_path)
-    if pages:
-        logger.info("[ingestion] Fast local extraction succeeded (%d pages).", len(pages))
-        return pages
+    local_pages = _try_fast_local_extract(file_path)
+    if local_pages and len(local_pages) > 0:
+        total_chars = sum(len(p) for p in local_pages)
+        if total_chars >= 50:
+            logger.info("[ingestion] Fast local extraction succeeded (%d pages, %d chars).", len(local_pages), total_chars)
+            return local_pages
 
-    logger.info("[ingestion] Local extraction insufficient — falling back to LlamaParse (fast_mode).")
-    return _llamaparse_extract(file_path)
+    logger.info("[ingestion] Local extraction yielded minimal or no text — falling back to LlamaParse cloud parser.")
+    cloud_pages = _llamaparse_extract(file_path)
+    if cloud_pages:
+        logger.info("[ingestion] LlamaParse extraction succeeded (%d pages).", len(cloud_pages))
+        return cloud_pages
+
+    # Fallback: If LlamaParse failed or returned no text, but we had some local text
+    if local_pages:
+        logger.warning("[ingestion] LlamaParse unavailable or empty; falling back to %d locally extracted page(s).", len(local_pages))
+        return local_pages
+
+    raise ValueError(
+        f"Could not extract readable text from '{file_path.name}'. "
+        "If this is a scanned document or image-only PDF, please verify that LLAMA_CLOUD_API_KEY is configured and active."
+    )
 
 
 # --- Step 3: Chunk text -----------------------------------------------
