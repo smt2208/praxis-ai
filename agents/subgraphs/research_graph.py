@@ -21,7 +21,7 @@ from langchain.agents import create_agent
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
-from agents.tools import tavily_tool, arxiv_tool, wikipedia_tool, pubmed_tool
+from agents.tools import openai_web_search, arxiv_tool, wikipedia_tool, pubmed_tool
 from prompts.research_prompts import PLANNER_SYSTEM, RESEARCHER_HUMAN, REPORTER_SYSTEM, REPORTER_HUMAN
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def researcher_node(state: ResearchState) -> dict:
 
     logger.info("[Researcher] Step %d/%d: '%s'", step_idx + 1, len(plan), current_step)
 
-    agent = create_agent(model=_llm, tools=[arxiv_tool, pubmed_tool, wikipedia_tool, tavily_tool])
+    agent = create_agent(model=_llm, tools=[arxiv_tool, pubmed_tool, wikipedia_tool, openai_web_search])
     sys_msg = SystemMessage(content=f"CURRENT DATE: {current_date}. Use this for 'today' / 'latest'.")
     prompt = RESEARCHER_HUMAN.format(
         query=state["query"],

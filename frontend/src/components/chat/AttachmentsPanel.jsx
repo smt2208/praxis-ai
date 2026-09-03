@@ -6,29 +6,27 @@ import { FileText, Image as ImageIcon, X, Loader2, ChevronRight, Paperclip } fro
  *
  * Right-side drawer that shows all attachments for the current conversation:
  *  - Ingested documents (persistent across conversation)
- *  - Images queued for the current message (pending send)
+ *  - Images that have already been sent in past messages (read-only, historical)
  *
  * Props:
  *   isOpen          {bool}     - Whether the panel is visible
  *   onClose         {fn}       - Close button handler
  *   activeFiles     {object[]} - [{ name: string }] — ingested docs in conv
- *   selectedImages  {string[]} - Base64 data URIs queued for current send
+ *   sentImages      {string[]} - Base64 data URIs from sent messages (read-only)
  *   ingesting       {bool}     - True while a doc is uploading
  *   uploadingFileName {string} - Name of the file being uploaded
  *   onRemoveFile    {fn}       - (index) => void — remove doc pill
- *   onRemoveImage   {fn}       - (index) => void — remove pending image
  */
 export const AttachmentsPanel = ({
   isOpen,
   onClose,
   activeFiles = [],
-  selectedImages = [],
+  sentImages = [],
   ingesting = false,
   uploadingFileName = '',
   onRemoveFile,
-  onRemoveImage,
 }) => {
-  const hasContent = activeFiles.length > 0 || selectedImages.length > 0 || ingesting;
+  const hasContent = activeFiles.length > 0 || sentImages.length > 0 || ingesting;
 
   return (
     <>
@@ -103,27 +101,17 @@ export const AttachmentsPanel = ({
             </div>
           )}
 
-          {/* Images queued for next message */}
-          {selectedImages.length > 0 && (
+          {/* Images already sent in the conversation (read-only, historical) */}
+          {sentImages.length > 0 && (
             <div className="attachments-section">
               <p className="attachments-section-label">
-                Images — this message
-                <span className="attachments-count">{selectedImages.length}</span>
+                Images sent
+                <span className="attachments-count">{sentImages.length}</span>
               </p>
               <div className="attachments-image-grid">
-                {selectedImages.map((b64, idx) => (
+                {sentImages.map((b64, idx) => (
                   <div key={idx} className="attachment-image-thumb">
-                    <img src={b64} alt={`Image ${idx + 1}`} />
-                    {onRemoveImage && (
-                      <button
-                        className="attachment-image-remove"
-                        onClick={() => onRemoveImage(idx)}
-                        title="Remove image"
-                        aria-label={`Remove image ${idx + 1}`}
-                      >
-                        <X size={10} />
-                      </button>
-                    )}
+                    <img src={b64} alt={`Sent image ${idx + 1}`} />
                   </div>
                 ))}
               </div>

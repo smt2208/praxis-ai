@@ -20,7 +20,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain.agents import create_agent
 
 from app.config import DEFAULT_MODEL
-from agents.tools import tavily_tool
+from agents.tools import openai_web_search
 from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN, CRITIC_SYSTEM
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ def parallel_fetch_node(state: KnowledgeState) -> dict:
         return result["messages"][-1].content
 
     async def _run_web() -> str:
-        agent = create_agent(model=_llm, tools=[tavily_tool])
+        agent = create_agent(model=_llm, tools=[openai_web_search])
         prompt = f"Search for the latest information about: {search_query}"
         result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]}, config={"recursion_limit": 4})
         return result["messages"][-1].content

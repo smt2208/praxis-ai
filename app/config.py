@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str
 
-    # Tavily
-    tavily_api_key: str
+    # Tavily (legacy — replaced by OpenAI web search)
+    tavily_api_key: str = ""
 
     # LlamaCloud
     llama_cloud_api_key: str

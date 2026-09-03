@@ -16,7 +16,8 @@ settings = get_settings()
 
 # Set API keys in env (LangChain picks them up automatically)
 os.environ["OPENAI_API_KEY"] = settings.openai_api_key
-os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
+if settings.tavily_api_key:
+    os.environ["TAVILY_API_KEY"] = settings.tavily_api_key
 
 # LangSmith tracing (optional — only set if API key is configured)
 if settings.langchain_api_key:
@@ -26,7 +27,12 @@ if settings.langchain_api_key:
 
 
 # Re-export all tools for consumers
-from agents.tools.web_search import tavily_tool, tavily_news_tool
+from agents.tools.web_search import (
+    openai_web_search,
+    openai_news_search,
+    tavily_tool,
+    tavily_news_tool,
+)
 from agents.tools.academic import arxiv_tool, pubmed_tool
 from agents.tools.encyclopedia import wikipedia_tool
 from agents.tools.retriever import build_hybrid_retriever

@@ -14,7 +14,7 @@ CRAG Enhancements:
   - Multi-query expansion: generates 2 complementary search queries per user message.
   - Relevance grading: grades retrieved chunks (sufficient / partial / none).
     - Sufficient → direct synthesis.
-    - Partial/None → triggers Tavily web search fallback, merged with document context.
+    - Partial/None → triggers OpenAI web search fallback, merged with document context.
 """
 import asyncio
 import logging
@@ -25,7 +25,7 @@ from langsmith import traceable
 
 from app.config import DEFAULT_MODEL, FAST_MODEL
 from agents.utils import format_history
-from agents.tools import tavily_tool
+from agents.tools import openai_web_search
 from agents.subgraphs.knowledge_graph import knowledge_graph, KnowledgeState
 from agents.subgraphs.knowledge_rag import rewrite_query, evaluate_doc_context
 from prompts.knowledge_prompts import SYNTHESIZER_SYSTEM, SYNTHESIZER_HUMAN
@@ -177,7 +177,7 @@ async def astream_knowledge_team(
         yield {"type": "status", "message": "Searching web for supplementary context..."}
 
         async def _fetch_web() -> str:
-            agent = create_agent(model=_llm, tools=[tavily_tool])
+            agent = create_agent(model=_llm, tools=[openai_web_search])
             from datetime import datetime
             date_str = datetime.now().strftime("%A, %B %d, %Y")
             sys_msg = SystemMessage(content=f"CURRENT DATE: {date_str}. Use this as reference for 'today' or 'latest'.")

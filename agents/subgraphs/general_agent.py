@@ -8,8 +8,8 @@ explanations, and anything that doesn't need internal docs or
 deep academic research.
 
 Tools:
-  - Tavily web search (for live facts, current events, prices, etc.)
-  - Tavily news search (dedicated news index for breaking news, sports, etc.)
+  - OpenAI web search (for live facts, current events, prices, etc.)
+  - OpenAI news search (for breaking news, sports, recent updates)
 
 Design: A single ReAct agent that decides for itself whether to
 search the web or answer from its own knowledge. Simple and fast.
@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
 from app.config import DEFAULT_MODEL
-from agents.tools import tavily_tool, tavily_news_tool
+from agents.tools import openai_web_search, openai_news_search
 from prompts.general_prompts import GENERAL_SYSTEM
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def _build_general_agent():
     from langchain.agents import create_agent
     return create_agent(
         model=_llm,
-        tools=[tavily_tool, tavily_news_tool],
+        tools=[openai_web_search, openai_news_search],
         system_prompt=GENERAL_SYSTEM,
     )
 
