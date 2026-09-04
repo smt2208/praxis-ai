@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/common/Navbar';
@@ -11,6 +11,7 @@ import { VerifyEmailPage } from './components/auth/VerifyEmailPage';
 import { ResetPasswordPage } from './components/auth/ResetPasswordPage';
 import { Sidebar } from './components/chat/Sidebar';
 import { ChatWindow } from './components/chat/ChatWindow';
+import { ServerOfflineModal } from './components/common/ServerOfflineModal';
 import { api } from './services/api';
 
 import './styles/index.css';
@@ -158,6 +159,39 @@ const MainLayout = () => {
 };
 
 export default function App() {
+  const [serverOffline, setServerOffline] = useState(false);
+  const [serverChecked, setServerChecked] = useState(false);
+
+  const checkServerHealth = useCallback(async () => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '');
+      const res = await fetch(`${API_BASE}/health`, {
+        signal: AbortSignal.timeout(4000),
+      });
+      setServerOffline(!res.ok);
+    } catch {
+      setServerOffline(true);
+    } finally {
+      setServerChecked(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkServerHealth();
+  }, [checkServerHealth]);
+
+  // Don't render anything until we know the server status
+  if (!serverChecked) return null;
+
+  // Show offline modal on top of (or instead of) the app
+  if (serverOffline) {
+    return (
+      <ThemeProvider>
+        <ServerOfflineModal onRetry={checkServerHealth} />
+      </ThemeProvider>
+    );
+  }
+
   // Render the password reset page for users arriving from the reset email link
   if (currentPath === '/reset-password') {
     return (
