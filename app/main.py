@@ -5,17 +5,17 @@ Startup sequence (via lifespan):
   1. Configure structured logging
   2. Load & validate settings
   3. Connect asyncpg pool → create / migrate tables
-  4. Compile LangGraph orchestrator (at import time in orchestrator.py)
-  5. Attach rate limiter & middleware
-  6. Include modular APIRouters
-  7. App ready (v1.1.0-prod)
+  4. Attach rate limiter & middleware
+  5. Include modular APIRouters
+  6. App ready (v1.1.0-prod)
 """
+# ruff: noqa: E402
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
 
 # ── Logging must be configured before any other imports emit log records ──
-from app.utils.logging import configure_logging
+from app.core.logging import configure_logging
 configure_logging()
 
 from fastapi import FastAPI, Request
@@ -27,7 +27,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
 from app.db import init_db_pool
-from app.auth.router import router as auth_router
+from app.routers.auth import router as auth_router
 from app.routers.health import router as health_router
 from app.routers.conversations import router as conversations_router
 from app.routers.chat import router as chat_router
@@ -46,11 +46,16 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     # ── Startup ──────────────────────────────────────────────────────
+    if settings.langchain_api_key and settings.langchain_tracing_v2.lower() == "true":
+        import os
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+        logger.info("[startup] LangSmith tracing enabled for project: %s", settings.langchain_project)
+
     logger.info("[startup] Connecting to PostgreSQL...")
     app.state.db_pool = await init_db_pool(settings)
     logger.info("[startup] Database ready. Tables ensured.")
-
-    logger.info("[startup] LangGraph orchestrator compiled.")
 
     # Pre-warm FastEmbed BM25 sparse model and Mem0 memory instance to eliminate first-query cold start latency
     await warmup_all_services()

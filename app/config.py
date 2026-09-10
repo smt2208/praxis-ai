@@ -54,8 +54,6 @@ class Settings(BaseSettings):
     langchain_api_key: str = ""
     langchain_project: str = "praxis-ai"
 
-    # ── Legacy / Optional ─────────────────────────────────────────────────────
-    tavily_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

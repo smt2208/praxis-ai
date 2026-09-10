@@ -22,7 +22,7 @@ from slowapi.util import get_remote_address
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
-from app.auth.security import decode_access_token
+from app.core.security import decode_access_token
 
 
 def _get_user_or_ip(request: Request) -> str:

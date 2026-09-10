@@ -7,21 +7,16 @@ import asyncio
 import logging
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, status
 
-from app.auth.dependencies import get_current_user
-from app.dependencies import get_pool
-from app.db import set_memory_enabled, get_memory_enabled
+from app.core.dependencies import get_current_user, get_pool
+from app.db import set_memory_enabled
+from app.schemas import MemoryToggleRequest
 from app.services.memory import delete_all_memories
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/memory", tags=["Memory"])
-
-
-class MemoryToggleRequest(BaseModel):
-    enabled: bool
 
 
 @router.patch("/toggle", status_code=status.HTTP_200_OK)

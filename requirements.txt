@@ -23,7 +23,8 @@ langsmith>=0.1.0
 # OpenAI SDK (Responses API + built-in web_search support)
 openai>=1.60.0
 
-# LangGraph
+
+# Multi-Agent Workflow Engine (LangGraph)
 langgraph>=0.3.0
 
 # Vector DB

@@ -19,7 +19,6 @@ from app.schemas.auth import (
 
 from app.schemas.chat import (
     ChatRequest,
-    ChatResponse,
     MessageResponse,
 )
 
@@ -38,3 +37,31 @@ from app.schemas.ingest import (
 from app.schemas.health import (
     HealthResponse,
 )
+
+from app.schemas.memory import (
+    MemoryToggleRequest,
+)
+
+__all__ = [
+    "RegisterRequest",
+    "LoginRequest",
+    "TokenResponse",
+    "RefreshRequest",
+    "LogoutRequest",
+    "UserMeResponse",
+    "VerifyEmailRequest",
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
+    "UpdateProfileRequest",
+    "ChatRequest",
+    "MessageResponse",
+    "ConversationCreateRequest",
+    "ConversationResponse",
+    "ConversationListItem",
+    "ConversationListResponse",
+    "IngestRequest",
+    "IngestResponse",
+    "HealthResponse",
+    "MemoryToggleRequest",
+]
+

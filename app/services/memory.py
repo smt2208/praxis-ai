@@ -15,7 +15,7 @@ from functools import lru_cache
 
 from mem0 import Memory
 
-from app.config import get_settings
+from app.config import get_settings, FAST_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def _get_memory() -> Memory:
         "llm": {
             "provider": "openai",
             "config": {
-                "model": "gpt-4o-mini",
+                "model": FAST_MODEL,
                 "api_key": settings.openai_api_key,
             },
         },

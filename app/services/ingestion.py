@@ -231,15 +231,19 @@ async def ingest_document(source_url: str, user_id: str, conversation_id: str) -
 
     try:
         logger.info("[ingestion] Parsing: %s", file_path.name)
+        # Offload CPU-bound document extraction to a worker thread to keep the event loop responsive
         pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
             raise ValueError("Parser returned no text from the document.")
 
+        # Offload text splitting and token chunking to a worker thread
         docs = await asyncio.to_thread(
             chunk_texts, pages, source_url, user_id, conversation_id
         )
         logger.info("[ingestion] Created %d chunks from %d pages.", len(docs), len(pages))
 
+        # Offload dense embedding calculation (OpenAI API) and sparse BM25 indexing (FastEmbed)
+        # to a worker thread to prevent blocking concurrent streaming chat turns
         count = await asyncio.to_thread(store_documents, docs, target_collection)
         logger.info("[ingestion] Stored %d chunks in '%s' for user '%s'.", count, target_collection, user_id)
         return count

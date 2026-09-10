@@ -1,13 +1,20 @@
+"""
+app/routers/ingest.py
+
+Document ingestion endpoints:
+  POST /api/v1/ingest       → Ingest document from a remote URL
+  POST /api/v1/ingest/file  → Ingest document via multipart/form-data upload
+
+Supports PDF, DOCX, PPTX, TXT, and Markdown files up to 20MB.
+Documents are scoped to specific conversation threads for tenant data isolation.
+"""
 import os
 import logging
 import tempfile
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 
-logger = logging.getLogger(__name__)
-
-from app.auth.dependencies import get_current_user
-from app.dependencies import get_pool
+from app.core.dependencies import get_current_user, get_pool
 from app.db import (
     mark_conversation_has_documents,
     add_conversation_document,
@@ -17,10 +24,12 @@ from app.db import (
 from app.schemas import IngestRequest, IngestResponse
 from app.services.ingestion import ingest_document
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/ingest", tags=["Ingestion"])
 
 ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.txt', '.md'}
-MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB safety limit for multipart uploads
 
 
 @router.post("", response_model=IngestResponse)

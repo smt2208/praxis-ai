@@ -1,8 +1,17 @@
+"""
+app/routers/conversations.py
+
+Conversation management endpoints:
+  GET    /api/v1/conversations                     → list user's conversations
+  POST   /api/v1/conversations                     → create new conversation
+  GET    /api/v1/conversations/{id}/messages       → retrieve message history
+  GET    /api/v1/conversations/{id}/documents      → list ingested documents
+  DELETE /api/v1/conversations/{id}                → delete conversation and related vector data
+"""
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth.dependencies import get_current_user
-from app.dependencies import get_pool
+from app.core.dependencies import get_current_user, get_pool
 from app.db import (
     get_history, create_conversation, get_conversations_by_user, delete_conversation,
     get_conversation_documents, verify_conversation_ownership,
@@ -81,12 +90,19 @@ async def delete_conv(
     pool: asyncpg.Pool = Depends(get_pool),
     current_user: dict = Depends(get_current_user),
 ):
-    """Delete a conversation, its messages, and all its Qdrant vector chunks. Only the owner can delete."""
+    """
+    Delete a conversation, all associated message records, and vector embeddings.
+
+    Executes a two-phase cleanup:
+      1. Purges all associated document chunks from Qdrant vector database to avoid orphaned vectors.
+      2. Deletes the Postgres conversation row, cascading to delete all associated messages.
+    """
+    owns = await verify_conversation_ownership(pool, conversation_id, current_user["id"])
+    if not owns:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
     # Purge Qdrant vector chunks first — so they're never left orphaned if Postgres succeeds.
     # Errors inside are caught/logged and won't block the user.
     await delete_conversation_qdrant_chunks(conversation_id)
-
-    deleted = await delete_conversation(pool, conversation_id, current_user["id"])
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Conversation not found.")
+    await delete_conversation(pool, conversation_id, current_user["id"])
 

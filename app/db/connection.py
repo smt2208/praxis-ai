@@ -84,9 +84,28 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS state      VARCHAR(100);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS country    VARCHAR(100);
 """
 
+# ── Performance Indexes ──────────────────────────────────────────────────
+# 1. idx_conversations_user_id: Accelerates user conversation listing and ownership checks.
+# 2. idx_messages_conversation_id_created: Composite index to optimize history fetching
+#    ordered by timestamp without requiring slow in-memory file sorts.
+# 3. idx_conv_docs_conversation_id: Fast lookup for conversation document presence & deduplication.
+# 4. idx_refresh_tokens_user_id: Quick revocation of all user tokens on logout.
+_CREATE_INDEXES_SQL = """
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations (user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id_created ON messages (conversation_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_conv_docs_conversation_id ON conversation_documents (conversation_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+"""
+
 
 async def init_db_pool(settings: Settings) -> asyncpg.Pool:
-    """Create the asyncpg connection pool and ensure all tables exist."""
+    """
+    Create the asyncpg connection pool and run idempotent DDL migrations.
+
+    Executes table definitions, column additions, and index creation on startup.
+    All statements use 'IF NOT EXISTS' to ensure safe, repeatable initialization
+    across app reboots and multi-worker deployments.
+    """
     pool = await asyncpg.create_pool(
         host=settings.postgres_host,
         port=settings.postgres_port,
@@ -104,5 +123,6 @@ async def init_db_pool(settings: Settings) -> asyncpg.Pool:
         await conn.execute(_ADD_FULL_NAME_COL)
         await conn.execute(_ADD_MEMORY_ENABLED_COL)
         await conn.execute(_ADD_EXTENDED_PROFILE_COLS)
+        await conn.execute(_CREATE_INDEXES_SQL)
     return pool
 

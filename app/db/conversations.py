@@ -17,11 +17,16 @@ async def create_conversation(pool: asyncpg.Pool, user_id: str, title: str = "Ne
 
 async def get_conversations_by_user(pool: asyncpg.Pool, user_id: str) -> list[dict]:
     """Return all conversations belonging to a user, newest first. Auto-prunes empty unused ones."""
+    # Auto-prune empty, document-less conversations older than 1 hour.
+    # The 1-hour grace window prevents race conditions where a user creates a new
+    # conversation thread in one tab/window, but a concurrent list fetch in another
+    # tab deletes it before the user finishes typing and sending their first message.
     await pool.execute(
         """
         DELETE FROM conversations
         WHERE user_id = $1
           AND has_documents = FALSE
+          AND created_at < (CURRENT_TIMESTAMP - INTERVAL '1 hour')
           AND id NOT IN (SELECT DISTINCT conversation_id FROM messages)
         """,
         user_id,
