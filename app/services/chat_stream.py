@@ -67,7 +67,6 @@ async def stream_chat_response(
     user_tz: str | None,
     memory_enabled: bool,
     user_profile: dict | None,
-    doc_names: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Coordinates Server-Sent Events (SSE) streaming for a chat turn.
@@ -126,7 +125,6 @@ async def stream_chat_response(
             user_tz=user_tz,
             memory_enabled=memory_enabled,
             user_profile=user_profile,
-            doc_names=doc_names,
         ):
             # Check if the client closed their browser tab or aborted the fetch connection.
             # Terminating here avoids wasting LLM token generation for disconnected clients.

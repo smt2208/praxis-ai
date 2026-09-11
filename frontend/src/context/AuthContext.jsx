@@ -60,6 +60,7 @@ export const AuthProvider = ({ children }) => {
   const logoutLocally = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('praxis_active_conv_id');
     setUser(null);
   };
 

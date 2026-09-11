@@ -36,11 +36,13 @@ const MainLayout = () => {
     }
   });
   const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    if (window.innerWidth <= 768) return false;
     try {
       const saved = localStorage.getItem('praxis_sidebar_open');
       if (saved !== null) return saved === 'true';
     } catch {}
-    return typeof window !== 'undefined' && window.innerWidth > 768;
+    return true;
   });
 
   const handleToggleSidebar = useCallback(() => {
@@ -73,18 +75,19 @@ const MainLayout = () => {
 
   // When user becomes authenticated, load their conversations
   useEffect(() => {
+    if (loading) return; // Wait until initial session check completes to avoid premature reset
+
     if (isAuthenticated) {
       loadConversations();
     } else {
-      // Session expired or logged out: reset chat state
+      // Confirmed logged out: reset chat state
       setConversations([]);
       setActiveConvId(null);
-      setSidebarOpen(false);
       try {
         localStorage.removeItem('praxis_active_conv_id');
       } catch {}
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loading]);
 
   const loadConversations = async () => {
     try {
@@ -95,9 +98,9 @@ const MainLayout = () => {
       // Restore active conversation from localStorage on initial load / refresh
       const savedConvId = localStorage.getItem('praxis_active_conv_id');
       if (savedConvId) {
-        const exists = list.some(c => (c.conversation_id || c.id) === savedConvId);
-        if (exists) {
-          setActiveConvId(savedConvId);
+        const match = list.find(c => String(c.conversation_id || c.id) === String(savedConvId));
+        if (match) {
+          setActiveConvId(String(match.conversation_id || match.id));
         } else if (list.length > 0) {
           // Previously selected conversation no longer exists
           localStorage.removeItem('praxis_active_conv_id');

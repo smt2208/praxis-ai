@@ -299,7 +299,7 @@ async def ingest_document(
             raise FileNotFoundError(f"Local file not found: {source_url}")
         cleanup = False
 
-    doc_display_name = original_filename or (file_path.name if not file_path.name.startswith("tmp") else "document")
+    doc_display_name = original_filename or Path(source_url).name or "document"
 
     try:
         logger.info("[ingestion] Parsing: %s", doc_display_name)

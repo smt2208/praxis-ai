@@ -72,7 +72,6 @@ class KnowledgeTeamState(TypedDict):
     web_results: str
     final_answer: str
     collect_context: bool
-    doc_names: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +181,6 @@ async def retrieve_node(state: KnowledgeTeamState) -> dict:
     rag_tool = build_hybrid_retriever(
         user_id=state["user_id"],
         conversation_id=state["conversation_id"],
-        doc_names=state.get("doc_names"),
     )
 
     async def _fetch_rag_for_query(q: str) -> str:
@@ -305,7 +303,6 @@ async def astream_knowledge_team(
     conversation_id: str,
     history: list | None = None,
     collect_context: bool = False,
-    doc_names: list[str] | None = None,
 ):
     """
     Enterprise RAG streaming with Corrective RAG (CRAG) verification.
@@ -325,7 +322,6 @@ async def astream_knowledge_team(
         "web_results": "",
         "final_answer": "",
         "collect_context": collect_context,
-        "doc_names": doc_names or [],
     }
 
     yield {"type": "status", "message": "Analyzing query..."}
