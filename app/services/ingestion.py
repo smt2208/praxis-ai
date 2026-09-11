@@ -276,10 +276,15 @@ def store_documents(docs: list[Document], collection_name: str) -> int:
 # --- Main pipeline entrypoint -----------------------------------------
 
 @traceable(name="Ingest Document Pipeline", run_type="chain")
-async def ingest_document(source_url: str, user_id: str, conversation_id: str) -> int:
+async def ingest_document(
+    source_url: str,
+    user_id: str,
+    conversation_id: str,
+    original_filename: str | None = None,
+) -> int:
     """
     Full pipeline: download → parse → chunk → embed → store.
-    Every chunk is tagged with user_id and conversation_id for per-conversation isolation.
+    Every chunk is tagged with user_id, conversation_id, and original_filename for clean citations.
     Returns the number of chunks stored.
     """
     target_collection = settings.qdrant_collection_name
@@ -294,8 +299,10 @@ async def ingest_document(source_url: str, user_id: str, conversation_id: str) -
             raise FileNotFoundError(f"Local file not found: {source_url}")
         cleanup = False
 
+    doc_display_name = original_filename or (file_path.name if not file_path.name.startswith("tmp") else "document")
+
     try:
-        logger.info("[ingestion] Parsing: %s", file_path.name)
+        logger.info("[ingestion] Parsing: %s", doc_display_name)
         # Offload CPU-bound document extraction to a worker thread to keep the event loop responsive
         pages = await asyncio.to_thread(parse_document, file_path)
         if not pages:
@@ -303,9 +310,9 @@ async def ingest_document(source_url: str, user_id: str, conversation_id: str) -
 
         # Offload text splitting and token chunking to a worker thread
         docs = await asyncio.to_thread(
-            chunk_texts, pages, source_url, user_id, conversation_id
+            chunk_texts, pages, doc_display_name, user_id, conversation_id
         )
-        logger.info("[ingestion] Created %d chunks from %d pages.", len(docs), len(pages))
+        logger.info("[ingestion] Created %d chunks from %d pages for '%s'.", len(docs), len(pages), doc_display_name)
 
         # Offload dense embedding calculation (OpenAI API) and sparse BM25 indexing (FastEmbed)
         # to a worker thread to prevent blocking concurrent streaming chat turns

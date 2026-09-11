@@ -38,7 +38,11 @@ def _is_global_query(query: str) -> bool:
     return any(kw in q for kw in _GLOBAL_INTENT_KEYWORDS)
 
 
-def build_hybrid_retriever(user_id: str, conversation_id: str) -> StructuredTool:
+def build_hybrid_retriever(
+    user_id: str,
+    conversation_id: str,
+    doc_names: list[str] | None = None,
+) -> StructuredTool:
     """
     Build a Qdrant hybrid retriever filtered to a specific conversation's documents.
     """
@@ -110,6 +114,14 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> StructuredTool
                 break
         return all_chunks
 
+    def _clean_source_name(raw_source: str) -> str:
+        name = str(raw_source).split("/")[-1].split("\\")[-1]
+        if (name.startswith("tmp") and len(name) > 10) or not name or name == "document":
+            if doc_names and len(doc_names) > 0:
+                return doc_names[0]
+            return "Uploaded Document"
+        return name
+
     def _run_retriever(query: str) -> str:
         if _is_global_query(query):
             raw_chunks = _fetch_all_chunks()
@@ -127,7 +139,7 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> StructuredTool
             for point in raw_chunks:
                 payload = point.payload
                 meta = payload.get("metadata", payload)
-                source = meta.get("source", "unknown").split("/")[-1].split("\\")[-1]
+                source = _clean_source_name(meta.get("source", "document"))
                 page = meta.get("page", "?")
                 text = payload.get("page_content", "")
                 if text.strip():
@@ -143,8 +155,9 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> StructuredTool
             docs = retriever.invoke(query)
             if not docs:
                 return "No relevant documents found in your knowledge base."
+
             return "\n\n---\n\n".join(
-                f"Source: {d.metadata.get('source', 'unknown')} (page {d.metadata.get('page', '?')})\n{d.page_content}"
+                f"[Source: {_clean_source_name(d.metadata.get('source', 'document'))} | Page {d.metadata.get('page', '?')}]\n{d.page_content}"
                 for d in docs
             )
 

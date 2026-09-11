@@ -98,6 +98,7 @@ class OrchestratorState(TypedDict):
     route: str
     final_answer: str
     image_history: str
+    doc_names: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +168,11 @@ async def vision_agent_node(state: OrchestratorState) -> dict:
     if state.get("has_documents"):
         try:
             from app.agents.tools.retriever import build_hybrid_retriever
-            retriever_tool = build_hybrid_retriever(state["user_id"], state["conversation_id"])
+            retriever_tool = build_hybrid_retriever(
+                state["user_id"],
+                state["conversation_id"],
+                doc_names=state.get("doc_names"),
+            )
             search_query = state.get("query", "").strip() or "summarize key points"
             doc_context = await retriever_tool.ainvoke(search_query)
             if not doc_context or "No relevant documents found" in doc_context:
@@ -240,6 +245,7 @@ async def knowledge_team_node(state: OrchestratorState) -> dict:
         user_id=state["user_id"],
         conversation_id=state["conversation_id"],
         history=state["messages"],
+        doc_names=state.get("doc_names"),
     ):
         if evt["type"] == "status":
             if writer is not None:
@@ -326,6 +332,7 @@ async def astream_graph_events(
     user_tz: str | None = None,
     memory_enabled: bool = True,
     user_profile: dict | None = None,
+    doc_names: list[str] | None = None,
 ):
     """
     Async generator for real-time Server-Sent Events (SSE) streaming powered by LangGraph.
@@ -365,6 +372,7 @@ async def astream_graph_events(
         "route": "",
         "final_answer": "",
         "image_history": image_history,
+        "doc_names": doc_names or [],
     }
 
     executed_route = "general"

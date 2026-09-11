@@ -66,6 +66,7 @@ async def ingest(
             source_url=url,
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
+            original_filename=filename,
         )
         await mark_conversation_has_documents(pool, body.conversation_id)
         await add_conversation_document(pool, body.conversation_id, filename)
@@ -123,6 +124,7 @@ async def ingest_file(
             source_url=tmp_path,
             user_id=current_user["id"],
             conversation_id=conversation_id,
+            original_filename=filename,
         )
         await mark_conversation_has_documents(pool, conversation_id)
         await add_conversation_document(pool, conversation_id, filename)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/common/Navbar';
@@ -28,9 +28,48 @@ const MainLayout = () => {
 
   // Chat state
   const [conversations, setConversations] = useState([]);
-  const [activeConvId, setActiveConvId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== 'undefined' && window.innerWidth > 768);
-  const initialChatCreatedRef = useRef(false);
+  const [activeConvId, setActiveConvId] = useState(() => {
+    try {
+      return localStorage.getItem('praxis_active_conv_id') || null;
+    } catch {
+      return null;
+    }
+  });
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('praxis_sidebar_open');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return typeof window !== 'undefined' && window.innerWidth > 768;
+  });
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('praxis_sidebar_open', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleCloseSidebar = useCallback(() => {
+    setSidebarOpen(false);
+    try {
+      localStorage.setItem('praxis_sidebar_open', 'false');
+    } catch {}
+  }, []);
+
+  const handleSetActiveConv = useCallback((id) => {
+    setActiveConvId(id || null);
+    try {
+      if (id) {
+        localStorage.setItem('praxis_active_conv_id', id);
+      } else {
+        localStorage.removeItem('praxis_active_conv_id');
+      }
+    } catch {}
+  }, []);
 
   // When user becomes authenticated, load their conversations
   useEffect(() => {
@@ -41,7 +80,9 @@ const MainLayout = () => {
       setConversations([]);
       setActiveConvId(null);
       setSidebarOpen(false);
-      initialChatCreatedRef.current = false;
+      try {
+        localStorage.removeItem('praxis_active_conv_id');
+      } catch {}
     }
   }, [isAuthenticated]);
 
@@ -51,11 +92,17 @@ const MainLayout = () => {
       const list = res.conversations || [];
       setConversations(list);
 
-      // On login / refresh: start with a fresh empty chat screen (ChatGPT/Claude flow)
-      // Past conversations are listed in the sidebar for easy access
-      if (!initialChatCreatedRef.current) {
-        initialChatCreatedRef.current = true;
-        setActiveConvId(null);
+      // Restore active conversation from localStorage on initial load / refresh
+      const savedConvId = localStorage.getItem('praxis_active_conv_id');
+      if (savedConvId) {
+        const exists = list.some(c => (c.conversation_id || c.id) === savedConvId);
+        if (exists) {
+          setActiveConvId(savedConvId);
+        } else if (list.length > 0) {
+          // Previously selected conversation no longer exists
+          localStorage.removeItem('praxis_active_conv_id');
+          setActiveConvId(null);
+        }
       }
     } catch (err) {
       console.error('Failed to load conversations:', err);
@@ -69,10 +116,8 @@ const MainLayout = () => {
 
   const handleCreateNewConversation = () => {
     // Simply reset to fresh chat screen without pre-creating an empty DB row
-    setActiveConvId(null);
-    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-      setSidebarOpen(false);
-    }
+    handleSetActiveConv(null);
+    // Note: Sidebar is NOT collapsed automatically. The user controls sidebar visibility.
   };
 
   const handleDeleteConversation = async (convId) => {
@@ -82,7 +127,7 @@ const MainLayout = () => {
       setConversations((prev) => prev.filter(c => (c.conversation_id || c.id) !== convId));
       // If the deleted one was active, open a new conversation
       if (convId === activeConvId) {
-        await handleCreateNewConversation();
+        handleCreateNewConversation();
       }
     } catch (err) {
       console.error('Failed to delete conversation:', err);
@@ -102,9 +147,9 @@ const MainLayout = () => {
   // ─── If authenticated → always go straight to the chat workspace ───
   if (isAuthenticated) {
     const handleSelectConv = (id) => {
-      setActiveConvId(id);
+      handleSetActiveConv(id);
       if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
+        handleCloseSidebar();
       }
     };
 
@@ -117,15 +162,15 @@ const MainLayout = () => {
           onNewConv={handleCreateNewConversation}
           onDeleteConv={handleDeleteConversation}
           isOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
-          onClose={() => setSidebarOpen(false)}
+          onToggleSidebar={handleToggleSidebar}
+          onClose={handleCloseSidebar}
         />
         <ChatWindow
           conversationId={activeConvId}
           activeTitle={conversations.find(c => (c.conversation_id || c.id) === activeConvId)?.title}
           onRefreshConversations={loadConversations}
-          onSelectActiveConv={(convId) => setActiveConvId(convId)}
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+          onSelectActiveConv={handleSetActiveConv}
+          onToggleSidebar={handleToggleSidebar}
           sidebarOpen={sidebarOpen}
         />
       </div>

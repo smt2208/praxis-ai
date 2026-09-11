@@ -15,6 +15,7 @@ from app.middleware.rate_limit import limiter
 from app.db import (
     get_history, save_message, get_conversation_has_documents,
     verify_conversation_ownership, get_memory_enabled, get_user_by_id,
+    get_conversation_documents,
 )
 from app.schemas import ChatRequest
 from app.services.chat_stream import stream_chat_response
@@ -39,7 +40,7 @@ async def chat_stream(
       1. Validates presence of either text message or uploaded image.
       2. Verifies session ownership to prevent cross-tenant message injection.
       3. Concurrently fetches conversation history, document status, memory settings,
-         and user profile via asyncio.gather to minimize latency before stream start.
+         user profile, and conversation documents via asyncio.gather.
       4. Saves the incoming user message to Postgres.
       5. Returns a Starlette StreamingResponse with headers tuned to disable reverse-proxy buffering.
     """
@@ -53,12 +54,13 @@ async def chat_stream(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    # Concurrently execute 4 database lookups in parallel instead of sequentially
-    history, has_documents, mem_enabled, user_profile = await asyncio.gather(
+    # Concurrently execute database lookups in parallel instead of sequentially
+    history, has_documents, mem_enabled, user_profile, doc_names = await asyncio.gather(
         get_history(pool, body.conversation_id, limit=30),
         get_conversation_has_documents(pool, body.conversation_id),
         get_memory_enabled(pool, current_user["id"]),
         get_user_by_id(pool, current_user["id"]),
+        get_conversation_documents(pool, body.conversation_id),
     )
 
     saved_user_msg = body.message.strip() if body.message.strip() else "Describe and analyze the attached image(s)."
@@ -81,6 +83,7 @@ async def chat_stream(
         user_tz=user_tz,
         memory_enabled=mem_enabled,
         user_profile=user_profile,
+        doc_names=doc_names,
     )
 
     return StreamingResponse(
