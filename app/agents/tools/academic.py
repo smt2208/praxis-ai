@@ -1,93 +1,41 @@
 """
 app/agents/tools/academic.py
 
-Academic research tools — Arxiv and PubMed.
+Academic research tools:
+  - ArXiv: Official LangChain Community ArxivQueryRun.
+  - PubMed: High-performance native asynchronous NCBI E-Utilities search via httpx.AsyncClient.
 """
-import asyncio
 import httpx
-from langchain_core.tools import Tool
+from langchain_community.tools.arxiv.tool import ArxivQueryRun
+from langchain_community.utilities.arxiv import ArxivAPIWrapper
+from langchain_core.tools import StructuredTool
 
+# ---------------------------------------------------------------------------
+# ArXiv Tool (LangChain Official Community Integration)
+# ---------------------------------------------------------------------------
 
-def _search_arxiv(query: str) -> str:
-    """Search arXiv academic papers safely across different SDK versions."""
-    try:
-        import arxiv
-
-        if hasattr(arxiv, "Client"):
-            client = arxiv.Client()
-            search = arxiv.Search(query=query, max_results=3, sort_by=arxiv.SortCriterion.Relevance)
-            results = list(client.results(search))
-        else:
-            search = arxiv.Search(query=query, max_results=3)
-            results = list(search.results())
-
-        if not results:
-            return "No relevant arXiv papers found for this query."
-
-        formatted = []
-        for r in results:
-            summary = r.summary.replace("\n", " ")[:1000]
-            formatted.append(
-                f"Title: {r.title}\n"
-                f"Authors: {', '.join(a.name for a in r.authors)}\n"
-                f"URL: {r.entry_id}\n"
-                f"Summary: {summary}"
-            )
-        return "\n\n---\n\n".join(formatted)
-    except Exception as e:
-        return f"arXiv search failed: {str(e)}"
-
-
-async def _search_arxiv_async(query: str) -> str:
-    """Async wrapper for arXiv SDK search."""
-    return await asyncio.to_thread(_search_arxiv, query)
-
-
-arxiv_tool = Tool(
+arxiv_tool = ArxivQueryRun(
     name="arxiv_search",
-    func=_search_arxiv,
-    coroutine=_search_arxiv_async,
     description=(
         "Search academic papers on arXiv. Use for computer science, physics, mathematics, "
         "AI, and technical engineering papers. Input should be a concise query string."
     ),
+    api_wrapper=ArxivAPIWrapper(
+        top_k_results=3,
+        doc_content_chars_max=1500,
+    ),
 )
 
-
-def _search_pubmed(query: str) -> str:
-    """Search PubMed NCBI database for medical, biological, and life science papers."""
-    try:
-        esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-        params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": 3}
-        resp = httpx.get(esearch_url, params=params, timeout=10)
-        id_list = resp.json().get("esearchresult", {}).get("idlist", [])
-
-        if not id_list:
-            return "No PubMed medical articles found for this query."
-
-        esummary_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
-        summary_params = {"db": "pubmed", "id": ",".join(id_list), "retmode": "json"}
-        sum_resp = httpx.get(esummary_url, params=summary_params, timeout=10)
-        sum_data = sum_resp.json().get("result", {})
-
-        results = []
-        for pmid in id_list:
-            item = sum_data.get(pmid, {})
-            title = item.get("title", "No title")
-            pubdate = item.get("pubdate", "")
-            authors = ", ".join(a.get("name", "") for a in item.get("authors", [])[:3])
-            results.append(f"Title: {title}\nPMID: {pmid}\nDate: {pubdate}\nAuthors: {authors}")
-        return "\n\n---\n\n".join(results)
-    except Exception as e:
-        return f"PubMed search failed: {str(e)}"
-
+# ---------------------------------------------------------------------------
+# PubMed Tool (Native Non-Blocking Async NCBI Search)
+# ---------------------------------------------------------------------------
 
 async def _search_pubmed_async(query: str) -> str:
-    """Native asynchronous PubMed NCBI search."""
+    """Native asynchronous PubMed NCBI search via httpx.AsyncClient."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-            params = {"db": "pubmed", "term": query, "retmode": "json", "retmax": 3}
+            params: dict[str, str | int] = {"db": "pubmed", "term": query, "retmode": "json", "retmax": 3}
             resp = await client.get(esearch_url, params=params)
             id_list = resp.json().get("esearchresult", {}).get("idlist", [])
 
@@ -111,13 +59,11 @@ async def _search_pubmed_async(query: str) -> str:
         return f"PubMed search failed: {str(e)}"
 
 
-pubmed_tool = Tool(
-    name="pubmed_search",
-    func=_search_pubmed,
+pubmed_tool = StructuredTool.from_function(
     coroutine=_search_pubmed_async,
+    name="pubmed_search",
     description=(
         "Search PubMed (NCBI). Best for medical, clinical, pharmaceutical, "
         "biological, and life science research papers. Input should be a search query string."
     ),
 )
-

@@ -2,62 +2,68 @@
 app/agents/teams/research.py
 
 Deep Multi-Domain Research Specialist Department.
-Consolidates:
-  - Iterative Research checklist planner
-  - Multi-domain tools execution (ArXiv, PubMed, Wikipedia, Web search)
-  - Real-time SSE streaming runner (astream_research_team)
+Built as a compiled LangGraph iterative research subgraph:
+  [START] -> [planner] -> [researcher] ◄────────┐
+                              │                 │ (loop if iteration < total_steps)
+                              ▼                 │
+                      (_should_continue?) ──────┘
+                              │ (done)
+                              ▼
+                          [reporter]
+                              │
+                              ▼
+                            [END]
 """
 import logging
-from typing import TypedDict
+import operator
+from datetime import datetime
+from typing import Annotated, TypedDict
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_agent
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
 from langsmith import traceable
 
-from app.config import DEFAULT_MODEL
 from app.agents.context import format_history
-from app.agents.tools import openai_web_search, arxiv_tool, wikipedia_tool, pubmed_tool
 from app.agents.prompts.research import (
     PLANNER_SYSTEM,
-    RESEARCHER_HUMAN,
-    REPORTER_SYSTEM,
     REPORTER_HUMAN,
+    REPORTER_SYSTEM,
+    RESEARCHER_HUMAN,
 )
+from app.agents.tools import arxiv_tool, pubmed_tool, web_search_tool, wikipedia_tool
+from app.config import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
 # Capping the deep research loop at 3 iterations balances thorough multi-source
 # investigation (ArXiv, PubMed, Wikipedia, Web) against client & proxy keep-alive timeouts.
-# 3 steps at ~15-20s per tool invocation yields a ~45-60s execution window, safely within
-# typical 300s gateway timeout thresholds (e.g. AWS ALB, Nginx).
 MAX_RESEARCH_ITERATIONS = 3
 
 _llm = ChatOpenAI(model=DEFAULT_MODEL, temperature=0)
-_research_agent = create_agent(model=_llm, tools=[arxiv_tool, pubmed_tool, wikipedia_tool, openai_web_search])
 
 
 # ---------------------------------------------------------------------------
-# Research State
+# Subgraph State Definition
 # ---------------------------------------------------------------------------
 
 class ResearchState(TypedDict):
     query: str
     history_summary: str
     research_plan: list[str]
-    findings: list[str]
+    findings: Annotated[list[str], operator.add]
     iteration: int
     final_report: str
 
 
 # ---------------------------------------------------------------------------
-# Research Step Functions
+# LangGraph Subgraph Nodes
 # ---------------------------------------------------------------------------
 
 @traceable(name="Research Planner Node", run_type="chain")
 async def planner_node(state: ResearchState) -> dict:
     """Break the query into a numbered research checklist."""
-    from datetime import datetime
     current_date = datetime.now().strftime("%A, %B %d, %Y")
 
     plan_prompt = state["query"]
@@ -84,10 +90,14 @@ async def planner_node(state: ResearchState) -> dict:
 async def researcher_node(state: ResearchState) -> dict:
     """
     Pick the next un-researched step and execute it with multi-domain tools.
-    Appends findings; the list reducer merges them across iterations.
+    Appends findings via the operator.add reducer across iterations.
     """
-    from datetime import datetime
     current_date = datetime.now().strftime("%A, %B %d, %Y")
+
+    research_agent = create_agent(
+        model=_llm,
+        tools=[arxiv_tool, pubmed_tool, wikipedia_tool, web_search_tool],
+    )
 
     plan = state["research_plan"] or [state["query"]]
     iteration = state["iteration"]
@@ -104,7 +114,7 @@ async def researcher_node(state: ResearchState) -> dict:
         current_step=current_step,
     )
     try:
-        result = await _research_agent.ainvoke(
+        result = await research_agent.ainvoke(
             {"messages": [sys_msg, HumanMessage(content=prompt)]},
             config={"recursion_limit": 4},
         )
@@ -117,19 +127,72 @@ async def researcher_node(state: ResearchState) -> dict:
     return {"findings": [finding], "iteration": iteration + 1}
 
 
+@traceable(name="Reporter Node", run_type="chain")
+async def reporter_node(state: ResearchState) -> dict:
+    """Synthesize findings across all research iterations into a cohesive report."""
+    findings_text = "\n\n".join(state.get("findings", []))
+    messages = [
+        SystemMessage(content=REPORTER_SYSTEM),
+        HumanMessage(content=REPORTER_HUMAN.format(query=state["query"], findings_text=findings_text)),
+    ]
+    response = await _llm.ainvoke(messages)
+    content = response.content if isinstance(response.content, str) else str(response.content)
+    return {"final_report": content}
+
+
+def _should_continue_research(state: ResearchState) -> str:
+    """Determine whether to research the next checklist item or synthesize the final report."""
+    plan = state.get("research_plan", [])
+    iteration = state.get("iteration", 0)
+    total_steps = min(len(plan), MAX_RESEARCH_ITERATIONS)
+    if iteration < total_steps:
+        return "researcher"
+    return "reporter"
+
+
+# ---------------------------------------------------------------------------
+# Graph Assembly & Compilation
+# ---------------------------------------------------------------------------
+
+def _build_research_graph():
+    """Compile the Deep Research Team iterative subgraph."""
+    builder = StateGraph(ResearchState)
+
+    builder.add_node("planner", planner_node)
+    builder.add_node("researcher", researcher_node)
+    builder.add_node("reporter", reporter_node)
+
+    builder.add_edge(START, "planner")
+    builder.add_edge("planner", "researcher")
+    builder.add_conditional_edges(
+        "researcher",
+        _should_continue_research,
+        {
+            "researcher": "researcher",
+            "reporter": "reporter",
+        },
+    )
+    builder.add_edge("reporter", END)
+
+    return builder.compile()
+
+
+_research_graph = _build_research_graph()
+
+
 # ---------------------------------------------------------------------------
 # Public Streaming Execution API
 # ---------------------------------------------------------------------------
-
 
 @traceable(name="Research Team Stream", run_type="chain")
 async def astream_research_team(query: str, history: list | None = None):
     """
     Async generator yielding step-by-step progress then streaming report tokens.
+    Streams from the compiled LangGraph research subgraph.
     """
     history_summary = format_history(history) if history else ""
 
-    state: ResearchState = {
+    initial_state: ResearchState = {
         "query": query,
         "history_summary": history_summary,
         "research_plan": [],
@@ -138,34 +201,39 @@ async def astream_research_team(query: str, history: list | None = None):
         "final_report": "",
     }
 
-    # Step 1: Planning
     yield {"type": "status", "message": "Researching..."}
-    plan_delta = await planner_node(state)
-    state.update(plan_delta)
 
-    # Step 2: Multi-step research execution
-    total_steps = min(len(state["research_plan"]), MAX_RESEARCH_ITERATIONS)
-    for i in range(total_steps):
-        yield {"type": "status", "message": "Researching..."}
-        research_delta = await researcher_node(state)
-        state["findings"].extend(research_delta.get("findings", []))
-        state["iteration"] = research_delta.get("iteration", i + 1)
+    synthesizing_started = False
+    tokens_streamed = False
 
-    # Step 3: Synthesis with live token streaming
-    yield {"type": "status", "message": "Synthesizing..."}
+    async for mode, payload in _research_graph.astream(
+        initial_state,
+        stream_mode=["messages", "updates"],
+    ):
+        if mode == "updates":
+            for node_name, update in payload.items():
+                if node_name in ("planner", "researcher"):
+                    yield {"type": "status", "message": "Researching..."}
+                elif node_name == "reporter":
+                    final_report = update.get("final_report", "")
+                    if not tokens_streamed and final_report:
+                        if not synthesizing_started:
+                            yield {"type": "status", "message": "Synthesizing..."}
+                        yield {"type": "token", "content": final_report}
 
-    findings_text = "\n\n".join(state["findings"])
-    messages = [
-        SystemMessage(content=REPORTER_SYSTEM),
-        HumanMessage(content=REPORTER_HUMAN.format(query=state["query"], findings_text=findings_text)),
-    ]
+        elif mode == "messages":
+            chunk, metadata = payload
+            if metadata.get("langgraph_node") == "reporter":
+                if not synthesizing_started:
+                    synthesizing_started = True
+                    yield {"type": "status", "message": "Synthesizing..."}
 
-    async for chunk in _llm.astream(messages):
-        content = chunk.content
-        if isinstance(content, str) and content:
-            yield {"type": "token", "content": content}
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
-                    yield {"type": "token", "content": block["text"]}
-
+                content = chunk.content
+                if isinstance(content, str) and content:
+                    tokens_streamed = True
+                    yield {"type": "token", "content": content}
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                            tokens_streamed = True
+                            yield {"type": "token", "content": block["text"]}

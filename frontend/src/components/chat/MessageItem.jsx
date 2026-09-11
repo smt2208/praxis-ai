@@ -22,6 +22,7 @@ export const MessageItem = ({ message }) => {
                 key={i}
                 src={b64}
                 alt={`Attached upload ${i + 1}`}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 style={{
                   width: '90px',
                   height: '90px',

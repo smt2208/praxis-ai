@@ -55,14 +55,18 @@ async def chat_stream(
 
     # Concurrently execute 4 database lookups in parallel instead of sequentially
     history, has_documents, mem_enabled, user_profile = await asyncio.gather(
-        get_history(pool, body.conversation_id, limit=20),
+        get_history(pool, body.conversation_id, limit=30),
         get_conversation_has_documents(pool, body.conversation_id),
         get_memory_enabled(pool, current_user["id"]),
         get_user_by_id(pool, current_user["id"]),
     )
 
-    saved_user_msg = body.message.strip() if body.message.strip() else "[Image attached]"
-    await save_message(pool, body.conversation_id, "user", saved_user_msg)
+    saved_user_msg = body.message.strip() if body.message.strip() else "Describe and analyze the attached image(s)."
+    # Attach image metadata so future turns know images were shared in this turn
+    msg_metadata = {}
+    if body.images:
+        msg_metadata["image_count"] = len(body.images)
+    await save_message(pool, body.conversation_id, "user", saved_user_msg, metadata=msg_metadata or None)
     user_tz = request.headers.get("x-user-timezone")
 
     event_generator = stream_chat_response(
@@ -70,7 +74,7 @@ async def chat_stream(
         pool=pool,
         user_id=current_user["id"],
         conversation_id=body.conversation_id,
-        query=body.message,
+        query=saved_user_msg,
         history=history,
         has_documents=has_documents,
         images=body.images,

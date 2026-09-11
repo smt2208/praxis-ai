@@ -32,7 +32,6 @@ flowchart TD
         General[🌐 General Web Agent]:::agent
         Vision[👁️ Vision Agent]:::agent
         FollowUp[💬 Conversational Follow-Up]:::agent
-        Hybrid[⚡ Hybrid Fan-Out & Synthesizer]:::agent
     end
 
     %% Flow
@@ -45,7 +44,6 @@ flowchart TD
     Router -- "Literature / Deep Investigation" --> Research
     Router -- "General / Real-Time News" --> General
     Router -- "Image Input (has_images=True)" --> Vision
-    Router -- "Dual Domain (Docs + Web)" --> Hybrid
 
     Knowledge -.->|Dense + BM25 Retrieval| Qdrant
     Research -.->|Iterative Academic Queries| Tools
@@ -56,7 +54,6 @@ flowchart TD
     General -- "Stream Answer Tokens" --> API
     Vision -- "Stream Visual Analysis" --> API
     FollowUp -- "Stream Direct Reply" --> API
-    Hybrid -- "Stream Unified Synthesis" --> API
 
     API -- "4. Shielded DB Persistence & SSE Stream" --> User
 ```
@@ -104,12 +101,9 @@ flowchart TD
    - **Deep Research Team (`app/agents/teams/research.py`):**
      - Multi-step research planner generating an actionable checklist.
      - Autonomous tool execution across **ArXiv**, **PubMed (NCBI)**, **Wikipedia**, and live **Web Search**.
-     - Live synthesis of multi-source findings into a structured report.
-   - **Hybrid Fan-Out (`hybrid_node` in `app/agents/orchestrator.py`):**
-     - Executes two departments concurrently (e.g., internal document analysis + live web investigation) via `asyncio.gather`.
-     - Synthesizes findings into a unified, cross-referenced answer.
    - **Multimodal Vision Agent (`app/agents/teams/vision.py`):**
      - Analyzes up to 5 base64 data URI images per prompt for diagram interpretation, visual Q&A, and screenshot OCR.
+     - Automatically integrates document summary/context when documents have been uploaded to the conversation.
 
 3. **Production Reliability & Enterprise Security:**
    - **Memory Cold-Start Warmup:** Pre-warms FastEmbed BM25 models and Mem0 instances on FastAPI lifespan startup to eliminate first-request latency.
@@ -276,8 +270,8 @@ erDiagram
         text hashed_password
         boolean is_verified
         text verification_token
-        text reset_password_token
-        timestamp reset_token_expires_at
+        text password_reset_token
+        timestamp password_reset_expires_at
         varchar full_name
         int age
         varchar profession
@@ -302,6 +296,7 @@ erDiagram
         uuid conversation_id FK
         varchar role
         text content
+        jsonb metadata
         timestamp created_at
     }
 

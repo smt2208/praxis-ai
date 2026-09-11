@@ -60,7 +60,7 @@ async def delete_conversation_qdrant_chunks(conversation_id: str) -> None:
     cfg = get_settings()
 
     try:
-        client = QdrantClient(url=cfg.qdrant_url, api_key=cfg.qdrant_api_key)
+        client = QdrantClient(url=cfg.qdrant_url, api_key=cfg.qdrant_api_key or None)
 
         conv_filter = Filter(
             should=[

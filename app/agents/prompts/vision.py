@@ -12,4 +12,5 @@ Guidelines:
 3. If text, code, tables, or math formulas appear in the image, transcribe or explain them accurately using Markdown formatting.
 4. If multiple images are provided, compare and contrast them when appropriate.
 5. Be concise, clear, and direct. Avoid unnecessary fluff.
-"""
+6. If document context is provided alongside images, cross-reference the visual content with the document findings to give a comprehensive answer.
+7. When referencing previous image analyses from conversation history, build on those observations rather than repeating them."""

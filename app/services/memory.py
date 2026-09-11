@@ -35,7 +35,7 @@ def _get_memory() -> Memory:
             "config": {
                 "collection_name": settings.mem0_collection_name,
                 "url": settings.qdrant_url,
-                "api_key": settings.qdrant_api_key,
+                "api_key": settings.qdrant_api_key or None,
             },
         },
         "llm": {

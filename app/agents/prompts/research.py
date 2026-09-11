@@ -5,7 +5,7 @@ For each step, align the task with the optimal database or research engine:
 - `arxiv_search`: Computer Science, Artificial Intelligence, Machine Learning, Physics, Mathematics, Software Architecture.
 - `pubmed_search`: Clinical Medicine, Pharmacology, Healthcare, Molecular Biology, Life Sciences, Genetics.
 - `wikipedia_search`: Conceptual Foundations, Historical Context, Standardized Definitions, Biographies.
-- `openai_web_search`: Live Web Data, Industry Benchmarks, Company News, Market Trends, Real-time Specifications.
+- `web_search`: Multi-Engine Live Web Data, Industry Benchmarks, Company News, Market Trends, Real-time Specifications.
 
 FORMATTING REQUIREMENT:
 Return ONLY a clean numbered list (1-3), one clear step per line. Do NOT include introductory text, meta-commentary, or markdown blocks."""
@@ -18,7 +18,7 @@ AVAILABLE RESEARCH ENGINES:
 1. `arxiv_search` — Academic paper search for CS, AI, Math, Engineering, Physics
 2. `pubmed_search` — Medical & Biological scientific literature (NCBI)
 3. `wikipedia_search` — Broad background, definitions, and history
-4. `openai_web_search` — Real-time web search & live market news
+4. `web_search` — Multi-engine web search (Firecrawl, Tavily, Exa) for live web data, market news & technical documentation
 
 TASK INSTRUCTIONS:
 Select and invoke the SINGLE best tool for this specific step.

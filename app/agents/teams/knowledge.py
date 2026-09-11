@@ -2,30 +2,41 @@
 app/agents/teams/knowledge.py
 
 Enterprise Document RAG & CRAG Specialist Department.
-Consolidates:
-  - Query rewriting & relevance evaluation (CRAG helpers)
-  - Multi-query expansion & RRF fusion
-  - Real-time SSE streaming runner (astream_knowledge_team)
+Built as a compiled LangGraph CRAG subgraph:
+  [START] -> [rewrite] -> [retrieve] -> [evaluate] -> (sufficient?)
+                                            │
+                   ┌────────────────────────┴────────────────────────┐
+                   │ is_sufficient=True                              │ is_sufficient=False
+                   ▼                                                 ▼
+             [synthesize]                                     [web_fallback]
+                   │                                                 │
+                   ▼                                                 ▼
+                 [END] ◄─────────────────────────────────────── [synthesize]
+
+Performance note:
+  RAG retrieval is a direct Python call to rag_tool.func() in a thread pool (Qdrant
+  via langchain-qdrant). Zero LLM agent overhead during retrieval.
 """
 import asyncio
 import logging
 import re
+from typing import TypedDict
 
-from pydantic import BaseModel
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain.agents import create_agent
+from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
 from langsmith import traceable
+from pydantic import BaseModel
 
-from app.config import DEFAULT_MODEL, FAST_MODEL
 from app.agents.context import format_history
-from app.agents.tools import openai_web_search, build_hybrid_retriever
 from app.agents.prompts.knowledge import (
-    SYNTHESIZER_SYSTEM,
-    SYNTHESIZER_HUMAN,
-    QUERY_REWRITER_SYSTEM,
     EVALUATOR_SYSTEM,
+    QUERY_REWRITER_SYSTEM,
+    SYNTHESIZER_HUMAN,
+    SYNTHESIZER_SYSTEM,
 )
+from app.agents.tools import build_hybrid_retriever, web_search_tool
+from app.config import DEFAULT_MODEL, FAST_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +57,25 @@ _evaluator_llm = _llm.with_structured_output(EvaluationResult)
 
 
 # ---------------------------------------------------------------------------
-# CRAG Helper Utilities
+# Subgraph State Definition
+# ---------------------------------------------------------------------------
+
+class KnowledgeTeamState(TypedDict):
+    query: str
+    user_id: str
+    conversation_id: str
+    history_summary: str
+    rewritten_query: str
+    expanded_queries: list[str]
+    rag_results: str
+    is_sufficient: bool
+    web_results: str
+    final_answer: str
+    collect_context: bool
+
+
+# ---------------------------------------------------------------------------
+# CRAG Helper Utilities & Nodes
 # ---------------------------------------------------------------------------
 
 @traceable(name="Rewrite Query", run_type="chain")
@@ -65,7 +94,7 @@ async def rewrite_query(query: str, history_summary: str = "") -> str:
             SystemMessage(content=QUERY_REWRITER_SYSTEM),
             HumanMessage(content=prompt),
         ])
-        rewritten = response.content.strip()
+        rewritten = response.content.strip() if isinstance(response.content, str) else str(response.content).strip()
         return rewritten if rewritten else query
     except Exception:
         return query
@@ -86,7 +115,11 @@ async def evaluate_doc_context(query: str, doc_context: str) -> bool:
             SystemMessage(content=EVALUATOR_SYSTEM),
             HumanMessage(content=prompt),
         ])
-        return result.sufficient
+        if isinstance(result, EvaluationResult):
+            return result.sufficient
+        if isinstance(result, dict):
+            return bool(result.get("sufficient", True))
+        return bool(getattr(result, "sufficient", True))
     except Exception:
         return True
 
@@ -104,7 +137,7 @@ async def _expand_queries(query: str) -> list[str]:
     )
     try:
         response = await _fast_llm.ainvoke([HumanMessage(content=prompt)])
-        text = response.content.strip()
+        text = response.content.strip() if isinstance(response.content, str) else str(response.content).strip()
         found = re.findall(r'"([^"]+)"', text)
         queries = [q.strip() for q in found if q.strip()]
         if len(queries) >= 2:
@@ -128,6 +161,138 @@ def _rrf_merge(result_sets: list[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# LangGraph Subgraph Nodes
+# ---------------------------------------------------------------------------
+
+@traceable(name="Knowledge Rewrite Node", run_type="chain")
+async def rewrite_node(state: KnowledgeTeamState) -> dict:
+    """Decontextualize query against chat history."""
+    standalone = await rewrite_query(state["query"], state.get("history_summary", ""))
+    return {"rewritten_query": standalone}
+
+
+@traceable(name="Knowledge Retrieve Node", run_type="chain")
+async def retrieve_node(state: KnowledgeTeamState) -> dict:
+    """Expand query and fetch Qdrant vector chunks concurrently via thread pool."""
+    standalone_query = state.get("rewritten_query") or state["query"]
+    expanded_queries = await _expand_queries(standalone_query)
+    logger.info("[KnowledgeTeam] Expanded to %d queries: %s", len(expanded_queries), expanded_queries)
+
+    rag_tool = build_hybrid_retriever(
+        user_id=state["user_id"],
+        conversation_id=state["conversation_id"],
+    )
+
+    async def _fetch_rag_for_query(q: str) -> str:
+        try:
+            return await rag_tool.ainvoke(q)
+        except Exception as exc:
+            logger.warning("[KnowledgeTeam] RAG fetch failed for query '%s': %s", q, exc)
+            return ""
+
+    raw_results = await asyncio.gather(
+        *[_fetch_rag_for_query(q) for q in expanded_queries],
+        return_exceptions=True,
+    )
+    result_texts = [r for r in raw_results if isinstance(r, str) and r]
+    rag_results = _rrf_merge(result_texts) if result_texts else ""
+    return {"expanded_queries": expanded_queries, "rag_results": rag_results}
+
+
+@traceable(name="Knowledge Evaluate Node", run_type="chain")
+async def evaluate_node(state: KnowledgeTeamState) -> dict:
+    """Grade relevance and sufficiency of retrieved document chunks."""
+    standalone_query = state.get("rewritten_query") or state["query"]
+    rag_results = state.get("rag_results", "")
+    is_sufficient = await evaluate_doc_context(standalone_query, rag_results)
+    return {"is_sufficient": is_sufficient}
+
+
+@traceable(name="Knowledge Web Fallback Node", run_type="chain")
+async def web_fallback_node(state: KnowledgeTeamState) -> dict:
+    """Execute live web search fallback when document context is insufficient."""
+    standalone_query = state.get("rewritten_query") or state["query"]
+    try:
+        web_results = await web_search_tool.ainvoke(standalone_query)
+    except Exception as exc:
+        logger.warning("[KnowledgeTeam] Web fallback failed: %s", exc)
+        web_results = ""
+    return {"web_results": web_results}
+
+
+@traceable(name="Knowledge Synthesize Node", run_type="chain")
+async def synthesize_node(state: KnowledgeTeamState) -> dict:
+    """Generate grounded answer from document context and optional web context."""
+    human_content = SYNTHESIZER_HUMAN.format(
+        query=state["query"],
+        rag_results=state.get("rag_results", ""),
+        web_results=state.get("web_results") or "None required (internal document context was complete).",
+    )
+    messages = [SystemMessage(content=SYNTHESIZER_SYSTEM), HumanMessage(content=human_content)]
+    response = await _llm.ainvoke(messages)
+    content = response.content if isinstance(response.content, str) else str(response.content)
+    return {"final_answer": content}
+
+
+def _route_evaluation(state: KnowledgeTeamState) -> str:
+    """Route to web fallback if document context is insufficient, otherwise synthesize or finish."""
+    if not state.get("is_sufficient", True):
+        return "web_fallback"
+    if state.get("collect_context", False):
+        return END
+    return "synthesize"
+
+
+def _route_after_web_fallback(state: KnowledgeTeamState) -> str:
+    """After web fallback, finish if only collecting context, otherwise synthesize."""
+    if state.get("collect_context", False):
+        return END
+    return "synthesize"
+
+
+# ---------------------------------------------------------------------------
+# Graph Assembly & Compilation
+# ---------------------------------------------------------------------------
+
+def _build_knowledge_graph():
+    """Compile the Knowledge Team CRAG subgraph."""
+    builder = StateGraph(KnowledgeTeamState)
+
+    builder.add_node("rewrite", rewrite_node)
+    builder.add_node("retrieve", retrieve_node)
+    builder.add_node("evaluate", evaluate_node)
+    builder.add_node("web_fallback", web_fallback_node)
+    builder.add_node("synthesize", synthesize_node)
+
+    builder.add_edge(START, "rewrite")
+    builder.add_edge("rewrite", "retrieve")
+    builder.add_edge("retrieve", "evaluate")
+    builder.add_conditional_edges(
+        "evaluate",
+        _route_evaluation,
+        {
+            "synthesize": "synthesize",
+            "web_fallback": "web_fallback",
+            END: END,
+        },
+    )
+    builder.add_conditional_edges(
+        "web_fallback",
+        _route_after_web_fallback,
+        {
+            "synthesize": "synthesize",
+            END: END,
+        },
+    )
+    builder.add_edge("synthesize", END)
+
+    return builder.compile()
+
+
+_knowledge_graph = _build_knowledge_graph()
+
+
+# ---------------------------------------------------------------------------
 # Public Streaming Execution API
 # ---------------------------------------------------------------------------
 
@@ -141,94 +306,70 @@ async def astream_knowledge_team(
 ):
     """
     Enterprise RAG streaming with Corrective RAG (CRAG) verification.
-
-    Workflow:
-      1. Query Rewriting: Decontextualizes conversational pronouns against chat history.
-      2. Multi-Query Expansion & Fusion: Generates 2 semantic query variants and retrieves
-         document chunks concurrently via asyncio.gather, deduplicating via RRF merge.
-      3. Sufficiency Evaluation: An evaluator LLM determines if document context is sufficient.
-         If insufficient or missing, automatically triggers web search fallback.
-      4. Grounded Synthesis: Streams answer tokens in real-time with document source citations.
+    Streams from the compiled LangGraph CRAG subgraph.
     """
-    history_summary = format_history(history)
+    history_summary = format_history(history) if history else ""
 
-    # Step 1: Query rewriting
+    initial_state: KnowledgeTeamState = {
+        "query": query,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "history_summary": history_summary,
+        "rewritten_query": "",
+        "expanded_queries": [],
+        "rag_results": "",
+        "is_sufficient": True,
+        "web_results": "",
+        "final_answer": "",
+        "collect_context": collect_context,
+    }
+
     yield {"type": "status", "message": "Analyzing query..."}
-    standalone_query = await rewrite_query(query, history_summary)
 
-    # Step 2: CRAG — Multi-query expansion
-    yield {"type": "status", "message": "Searching documents..."}
-    expanded_queries = await _expand_queries(standalone_query)
-    logger.info("[KnowledgeTeam] Expanded to %d queries: %s", len(expanded_queries), expanded_queries)
-
-    rag_tool = build_hybrid_retriever(user_id=user_id, conversation_id=conversation_id)
-
-    async def _fetch_rag_for_query(q: str) -> str:
-        agent = create_agent(model=_llm, tools=[rag_tool])
-        result = await agent.ainvoke(
-            {"messages": [HumanMessage(content=q)]},
-            config={"recursion_limit": 4},
-        )
-        return result["messages"][-1].content
-
-    # Run all expanded queries in parallel
-    try:
-        raw_results = await asyncio.gather(
-            *[_fetch_rag_for_query(q) for q in expanded_queries],
-            return_exceptions=True,
-        )
-        result_texts = [r for r in raw_results if isinstance(r, str)]
-        rag_results = _rrf_merge(result_texts) if result_texts else ""
-    except Exception as exc:
-        logger.error("[KnowledgeTeam] Multi-query RAG failed: %s", exc)
-        rag_results = ""
-
-    # Step 3: CRAG relevance grading
-    yield {"type": "status", "message": "Thinking..."}
-    is_sufficient = await evaluate_doc_context(standalone_query, rag_results)
-
+    synthesizing_started = False
+    tokens_streamed = False
+    rag_results = ""
     web_results = ""
-    if not is_sufficient:
-        yield {"type": "status", "message": "Searching web for supplementary context..."}
 
-        async def _fetch_web() -> str:
-            agent = create_agent(model=_llm, tools=[openai_web_search])
-            from datetime import datetime
-            date_str = datetime.now().strftime("%A, %B %d, %Y")
-            sys_msg = SystemMessage(content=f"CURRENT DATE: {date_str}. Use this as reference for 'today' or 'latest'.")
-            result = await agent.ainvoke(
-                {"messages": [sys_msg, HumanMessage(content=f"Search for: {standalone_query}")]},
-                config={"recursion_limit": 4},
-            )
-            return result["messages"][-1].content
+    async for mode, payload in _knowledge_graph.astream(
+        initial_state,
+        stream_mode=["messages", "updates"],
+    ):
+        if mode == "updates":
+            for node_name, update in payload.items():
+                if node_name == "rewrite":
+                    yield {"type": "status", "message": "Searching documents..."}
+                elif node_name == "retrieve":
+                    rag_results = update.get("rag_results", "")
+                    yield {"type": "status", "message": "Thinking..."}
+                elif node_name == "evaluate":
+                    if not update.get("is_sufficient", True):
+                        yield {"type": "status", "message": "Searching web for supplementary context..."}
+                elif node_name == "web_fallback":
+                    web_results = update.get("web_results", "")
+                elif node_name == "synthesize":
+                    final_answer = update.get("final_answer", "")
+                    if not tokens_streamed and final_answer:
+                        if not synthesizing_started:
+                            yield {"type": "status", "message": "Generating answer..."}
+                        yield {"type": "token", "content": final_answer}
 
-        try:
-            web_results = await _fetch_web()
-        except Exception as exc:
-            logger.warning("[KnowledgeTeam] Web fallback failed: %s", exc)
-            web_results = ""
+        elif mode == "messages":
+            chunk, metadata = payload
+            if metadata.get("langgraph_node") == "synthesize":
+                if not synthesizing_started:
+                    synthesizing_started = True
+                    yield {"type": "status", "message": "Generating answer..."}
 
-    # Expose raw context to hybrid synthesizer if requested
+                content = chunk.content
+                if isinstance(content, str) and content:
+                    tokens_streamed = True
+                    yield {"type": "token", "content": content}
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                            tokens_streamed = True
+                            yield {"type": "token", "content": block["text"]}
+
     if collect_context:
         yield {"type": "context", "rag_results": rag_results, "web_results": web_results}
-        return
-
-    # Step 4: Grounded synthesis with live token streaming
-    yield {"type": "status", "message": "Generating answer..."}
-
-    human_content = SYNTHESIZER_HUMAN.format(
-        query=query,
-        rag_results=rag_results,
-        web_results=web_results or "None required (internal document context was complete).",
-    )
-    messages = [SystemMessage(content=SYNTHESIZER_SYSTEM), HumanMessage(content=human_content)]
-
-    async for chunk in _llm.astream(messages):
-        content = chunk.content
-        if isinstance(content, str) and content:
-            yield {"type": "token", "content": content}
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
-                    yield {"type": "token", "content": block["text"]}
-

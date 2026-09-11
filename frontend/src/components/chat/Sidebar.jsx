@@ -89,12 +89,13 @@ export const Sidebar = ({
             </div>
           ) : (
             conversations.map((conv) => {
-              const isConfirming = confirmingDeleteId === conv.conversation_id;
+              const convId = conv.conversation_id || conv.id;
+              const isConfirming = confirmingDeleteId === convId;
               return (
                 <div
-                  key={conv.conversation_id}
-                  className={`conversation-item ${conv.conversation_id === activeConvId ? 'active' : ''}`}
-                  onClick={() => onSelectConv(conv.conversation_id)}
+                  key={convId}
+                  className={`conversation-item ${convId === activeConvId ? 'active' : ''}`}
+                  onClick={() => onSelectConv(convId)}
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden', flex: 1 }}>
@@ -102,7 +103,7 @@ export const Sidebar = ({
                     <span className="conv-title">{conv.title || 'Untitled'}</span>
                   </div>
                   <button
-                    onClick={(e) => handleDeleteClick(e, conv.conversation_id)}
+                    onClick={(e) => handleDeleteClick(e, convId)}
                     title={isConfirming ? 'Click again to confirm delete' : 'Delete conversation'}
                     style={{
                       background: isConfirming ? 'rgba(239, 68, 68, 0.12)' : 'none',

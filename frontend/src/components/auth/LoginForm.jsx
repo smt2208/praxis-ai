@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { LogIn, Mail, Lock } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 export const LoginForm = ({ onSuccess, onSwitchToRegister, onForgotPassword }) => {
   const { login } = useAuth();

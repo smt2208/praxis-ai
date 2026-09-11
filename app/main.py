@@ -12,6 +12,7 @@ Startup sequence (via lifespan):
 # ruff: noqa: E402
 from contextlib import asynccontextmanager
 import logging
+import os
 from typing import AsyncGenerator
 
 # ── Logging must be configured before any other imports emit log records ──
@@ -46,8 +47,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     # ── Startup ──────────────────────────────────────────────────────
+    if settings.openai_api_key:
+        os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
+
     if settings.langchain_api_key and settings.langchain_tracing_v2.lower() == "true":
-        import os
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
         os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project

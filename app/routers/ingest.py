@@ -45,7 +45,14 @@ async def ingest(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    filename = body.source_url.split("/")[-1].split("?")[0] or "document"
+    url = body.source_url.strip()
+    if not url.lower().startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="Only remote HTTP and HTTPS URLs are supported for URL ingestion. Please use the file upload endpoint for local files.",
+        )
+
+    filename = url.split("/")[-1].split("?")[0] or "document"
 
     # Reject duplicate: same filename already ingested in this conversation
     if await check_document_exists(pool, body.conversation_id, filename):
@@ -56,7 +63,7 @@ async def ingest(
 
     try:
         count = await ingest_document(
-            source_url=body.source_url,
+            source_url=url,
             user_id=current_user["id"],
             conversation_id=body.conversation_id,
         )

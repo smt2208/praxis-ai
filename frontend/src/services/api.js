@@ -13,7 +13,7 @@ async function request(endpoint, options = {}) {
   try {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (tz) headers['X-User-Timezone'] = tz;
-  } catch (e) {}
+  } catch {}
 
   if (accessToken && !headers['Authorization']) {
     headers['Authorization'] = `Bearer ${accessToken}`;
@@ -44,6 +44,8 @@ async function request(endpoint, options = {}) {
         // Refresh token failed -> trigger logout event
         window.dispatchEvent(new Event('auth:logout'));
       }
+    } else {
+      window.dispatchEvent(new Event('auth:logout'));
     }
   }
 
@@ -53,11 +55,15 @@ async function request(endpoint, options = {}) {
     try {
       const errorData = await response.json();
       if (errorData.detail) {
-        errorMessage = typeof errorData.detail === 'string' 
-          ? errorData.detail 
-          : JSON.stringify(errorData.detail);
+        if (typeof errorData.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((d) => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
+        } else {
+          errorMessage = JSON.stringify(errorData.detail);
+        }
       }
-    } catch (e) {
+    } catch {
       // Ignore json parse error
     }
     throw new Error(errorMessage);
@@ -71,26 +77,37 @@ async function request(endpoint, options = {}) {
   return response.json();
 }
 
+let refreshPromise = null;
+
 /**
- * Helper to exchange refresh token for a new access token
+ * Helper to exchange refresh token for a new access token.
+ * Deduplicates concurrent refresh requests using an in-flight promise lock.
  */
 async function refreshTokenPair(refreshToken) {
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+  if (refreshPromise) return refreshPromise;
 
-    if (!res.ok) return false;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
 
-    const data = await res.json();
-    localStorage.setItem('access_token', data.access_token);
-    localStorage.setItem('refresh_token', data.refresh_token);
-    return true;
-  } catch {
-    return false;
-  }
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 // Export API endpoints
@@ -172,7 +189,7 @@ export const api = {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (tz) headers['X-User-Timezone'] = tz;
-    } catch (e) {}
+    } catch {}
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`;
     }
@@ -196,7 +213,11 @@ export const api = {
             body: JSON.stringify({ conversation_id: conversationId, message, images }),
             signal,
           });
+        } else {
+          window.dispatchEvent(new Event('auth:logout'));
         }
+      } else {
+        window.dispatchEvent(new Event('auth:logout'));
       }
     }
 
@@ -234,7 +255,7 @@ export const api = {
           else if (eventType === 'token' && onToken) onToken(data);
           else if (eventType === 'done' && onDone) onDone(data);
           else if (eventType === 'error' && onError) onError(data);
-        } catch (e) {
+        } catch {
           // ignore parse error
         }
       }

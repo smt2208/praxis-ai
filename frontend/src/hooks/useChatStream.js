@@ -67,6 +67,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
 
       let streamFailed = false;
       let wasAborted = false;
+      let serverErrorMsg = null;
 
       try {
         await api.sendMessageStream(activeId, text, images, {
@@ -105,7 +106,10 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
             scrollToBottom?.();
           },
 
-          onError: () => { streamFailed = true; },
+          onError: (data) => {
+            streamFailed = true;
+            if (data?.message) serverErrorMsg = data.message;
+          },
         });
 
       } catch (streamErr) {
@@ -113,6 +117,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
           wasAborted = true;
         } else {
           streamFailed = true;
+          if (streamErr.message) serverErrorMsg = streamErr.message;
         }
       }
 
@@ -124,7 +129,7 @@ export function useChatStream({ scrollToBottom, onConversationCreated, onRefresh
           return prev;
         });
       } else if (streamFailed) {
-        throw new Error('Streaming failed to complete. Please try again.');
+        throw new Error(serverErrorMsg || 'Streaming failed to complete. Please try again.');
       }
 
       if (onRefreshConversations) setTimeout(onRefreshConversations, 1000);

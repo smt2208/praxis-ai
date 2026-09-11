@@ -44,10 +44,21 @@ class Settings(BaseSettings):
     llama_cloud_api_key: str = ""
     mem0_collection_name: str = "praxis_memories"
 
+    # ── Web Search Providers (LangGraph Web Search Subgraph) ──────────────────
+    firecrawl_api_key: str = ""
+    tavily_api_key: str = ""
+    exa_api_key: str = ""
+
     # ── Email Service (Resend) ────────────────────────────────────────────────
     resend_api_key: str = ""
     resend_from_email: str = "onboarding@praxisapp.online"
     resend_from_name: str = "Praxis"
+
+    # ── AWS S3 (Image Persistence) ───────────────────────────────────────────
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_s3_bucket: str = ""
+    aws_s3_region: str = "ap-south-1"
 
     # ── Observability & Tracing (LangSmith) ────────────────────────────────────
     langchain_tracing_v2: str = "false"
@@ -64,5 +75,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 

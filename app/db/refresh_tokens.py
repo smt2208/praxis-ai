@@ -3,10 +3,11 @@ app/db/refresh_tokens.py
 
 Refresh token storage and revocation queries.
 """
+from datetime import datetime
 import asyncpg
 
 
-async def save_refresh_token(pool: asyncpg.Pool, user_id: str, token: str, expires_at) -> None:
+async def save_refresh_token(pool: asyncpg.Pool, user_id: str, token: str, expires_at: datetime) -> None:
     """Persist a refresh token to the DB."""
     await pool.execute(
         """
@@ -27,19 +28,26 @@ async def get_refresh_token(pool: asyncpg.Pool, token: str) -> dict | None:
         SELECT id, user_id, expires_at
         FROM refresh_tokens
         WHERE token = $1
-          AND expires_at > CURRENT_TIMESTAMP
+          AND expires_at > (NOW() AT TIME ZONE 'utc')
         """,
         token,
     )
     return dict(row) if row else None
 
 
-async def delete_refresh_token(pool: asyncpg.Pool, token: str) -> None:
+async def delete_refresh_token(pool: asyncpg.Pool, token: str, user_id: str | None = None) -> None:
     """Revoke a single refresh token (logout current device)."""
-    await pool.execute(
-        "DELETE FROM refresh_tokens WHERE token = $1",
-        token,
-    )
+    if user_id is not None:
+        await pool.execute(
+            "DELETE FROM refresh_tokens WHERE token = $1 AND user_id = $2",
+            token,
+            user_id,
+        )
+    else:
+        await pool.execute(
+            "DELETE FROM refresh_tokens WHERE token = $1",
+            token,
+        )
 
 
 async def delete_all_user_refresh_tokens(pool: asyncpg.Pool, user_id: str) -> None:

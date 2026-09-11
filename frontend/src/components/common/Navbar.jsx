@@ -1,9 +1,9 @@
 import React from 'react';
-import { Cpu, LogIn, UserPlus, LogOut, MessageSquare } from 'lucide-react';
+import { LogIn, UserPlus, LogOut, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const Navbar = ({ onOpenAuth, onGoToChat }) => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
 
   return (
     <header className="navbar">

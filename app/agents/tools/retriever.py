@@ -9,7 +9,10 @@ Two-mode retrieval strategy:
   - SPECIFIC queries (targeted questions):
       Hybrid vector search (dense + sparse) top-10.
 """
-from langchain_core.tools import Tool
+import asyncio
+
+from pydantic import SecretStr
+from langchain_core.tools import StructuredTool
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore, RetrievalMode
 
@@ -35,7 +38,7 @@ def _is_global_query(query: str) -> bool:
     return any(kw in q for kw in _GLOBAL_INTENT_KEYWORDS)
 
 
-def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
+def build_hybrid_retriever(user_id: str, conversation_id: str) -> StructuredTool:
     """
     Build a Qdrant hybrid retriever filtered to a specific conversation's documents.
     """
@@ -63,12 +66,12 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
         vector_store = QdrantVectorStore.from_existing_collection(
             embedding=OpenAIEmbeddings(
                 model="text-embedding-3-small",
-                api_key=settings.openai_api_key,
+                api_key=SecretStr(settings.openai_api_key),
             ),
             sparse_embedding=FastEmbedSparse(model_name="Qdrant/bm25"),
             collection_name=settings.qdrant_collection_name,
             url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
+            api_key=settings.qdrant_api_key or None,
             retrieval_mode=RetrievalMode.HYBRID,
             vector_name="dense",
             sparse_vector_name="sparse",
@@ -80,12 +83,12 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
     except Exception as exc:
         error_text = str(exc)
 
-        def _unavailable(_: str) -> str:
+        async def _unavailable_async(_: str) -> str:
             return f"Knowledge base retrieval is unavailable: Could not connect to Qdrant collection: {error_text}"
 
-        return Tool(
+        return StructuredTool.from_function(
+            coroutine=_unavailable_async,
             name="knowledge_base_search",
-            func=_unavailable,
             description="Search your private documents. Input should be a search query string.",
         )
 
@@ -145,9 +148,13 @@ def build_hybrid_retriever(user_id: str, conversation_id: str) -> Tool:
                 for d in docs
             )
 
-    return Tool(
+    async def _run_retriever_async(query: str) -> str:
+        """Async wrapper: offloads the synchronous Qdrant retriever to a thread pool."""
+        return await asyncio.to_thread(_run_retriever, query)
+
+    return StructuredTool.from_function(
+        coroutine=_run_retriever_async,
         name="knowledge_base_search",
-        func=_run_retriever,
         description=(
             "Search the user's private uploaded documents. "
             "Use this for any question about documents the user has uploaded. "

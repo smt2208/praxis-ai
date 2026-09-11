@@ -70,14 +70,16 @@ const MainLayout = () => {
   const handleCreateNewConversation = () => {
     // Simply reset to fresh chat screen without pre-creating an empty DB row
     setActiveConvId(null);
-    setSidebarOpen(false);
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
   };
 
   const handleDeleteConversation = async (convId) => {
     try {
       await api.deleteConversation(convId);
       // Remove from local list
-      setConversations((prev) => prev.filter(c => c.conversation_id !== convId));
+      setConversations((prev) => prev.filter(c => (c.conversation_id || c.id) !== convId));
       // If the deleted one was active, open a new conversation
       if (convId === activeConvId) {
         await handleCreateNewConversation();
@@ -120,7 +122,7 @@ const MainLayout = () => {
         />
         <ChatWindow
           conversationId={activeConvId}
-          activeTitle={conversations.find(c => c.conversation_id === activeConvId)?.title}
+          activeTitle={conversations.find(c => (c.conversation_id || c.id) === activeConvId)?.title}
           onRefreshConversations={loadConversations}
           onSelectActiveConv={(convId) => setActiveConvId(convId)}
           onToggleSidebar={() => setSidebarOpen(prev => !prev)}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Sparkles, ShieldCheck, Zap, BookOpenCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Zap, BookOpenCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const HeroSection = ({ onOpenAuth, onGoToChat }) => {

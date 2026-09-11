@@ -7,7 +7,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 
-def get_current_time_str(user_tz: str = None) -> str:
+def get_current_time_str(user_tz: str | None = None) -> str:
     """Format current date and time localized to user's timezone if provided."""
     if user_tz:
         try:

@@ -27,7 +27,9 @@ async def get_conversations_by_user(pool: asyncpg.Pool, user_id: str) -> list[di
         WHERE user_id = $1
           AND has_documents = FALSE
           AND created_at < (CURRENT_TIMESTAMP - INTERVAL '1 hour')
-          AND id NOT IN (SELECT DISTINCT conversation_id FROM messages)
+          AND NOT EXISTS (
+              SELECT 1 FROM messages m WHERE m.conversation_id = conversations.id
+          )
         """,
         user_id,
     )

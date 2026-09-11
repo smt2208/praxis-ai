@@ -17,7 +17,7 @@ import asyncio
 import secrets
 import asyncpg
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from app.core.security import (
     hash_password, verify_password,
@@ -63,7 +63,12 @@ async def _issue_tokens(pool: asyncpg.Pool, user_id: str, email: str) -> TokenRe
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")   # brute-force protection: max 5 registration attempts per minute per IP
-async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool = Depends(get_pool)):
+async def register(
+    request: Request,
+    body: RegisterRequest,
+    background_tasks: BackgroundTasks,
+    pool: asyncpg.Pool = Depends(get_pool),
+):
     """
     Register a new user account.
     Sends a verification email. Returns tokens so the client can access
@@ -83,8 +88,8 @@ async def register(request: Request, body: RegisterRequest, pool: asyncpg.Pool =
     token = secrets.token_urlsafe(32)
     await set_verification_token(pool, user_id, token)
 
-    # Send verification email in background thread (non-blocking)
-    asyncio.create_task(asyncio.to_thread(send_verification_email, body.email, token))
+    # Send verification email via FastAPI managed background task (non-blocking, safe from GC)
+    background_tasks.add_task(send_verification_email, body.email, token)
 
     return TokenResponse(
         access_token="",
@@ -184,7 +189,7 @@ async def logout(
     if body.logout_all_devices:
         await delete_all_user_refresh_tokens(pool, current_user["id"])
     else:
-        await delete_refresh_token(pool, body.refresh_token)
+        await delete_refresh_token(pool, body.refresh_token, current_user["id"])
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -237,7 +242,12 @@ async def update_profile(
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
-async def forgot_password(request: Request, body: ForgotPasswordRequest, pool: asyncpg.Pool = Depends(get_pool)):
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    pool: asyncpg.Pool = Depends(get_pool),
+):
     """
     Request a password reset email.
 
@@ -251,8 +261,8 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest, pool: a
         expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30)
         stored = await set_password_reset_token(pool, body.email, token, expires_at)
         if stored:
-            # Send password reset email in background thread (non-blocking)
-            asyncio.create_task(asyncio.to_thread(send_password_reset_email, body.email, token))
+            # Send password reset email via FastAPI managed background task (non-blocking, safe from GC)
+            background_tasks.add_task(send_password_reset_email, body.email, token)
 
     # Always return the same message to prevent email enumeration
     return {"message": "If an account exists for this email, a password reset link has been sent."}

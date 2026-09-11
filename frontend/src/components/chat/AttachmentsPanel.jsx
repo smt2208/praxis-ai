@@ -111,7 +111,11 @@ export const AttachmentsPanel = ({
               <div className="attachments-image-grid">
                 {sentImages.map((b64, idx) => (
                   <div key={idx} className="attachment-image-thumb">
-                    <img src={b64} alt={`Sent image ${idx + 1}`} />
+                    <img
+                      src={b64}
+                      alt={`Sent image ${idx + 1}`}
+                      onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                    />
                   </div>
                 ))}
               </div>

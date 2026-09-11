@@ -20,8 +20,13 @@ langchain-qdrant>=0.2.0
 langchain-text-splitters>=0.3.0
 langsmith>=0.1.0
 
-# OpenAI SDK (Responses API + built-in web_search support)
+# OpenAI SDK
 openai>=1.60.0
+
+# Web Search Providers (LangChain Partner Packages for Firecrawl, Tavily, Exa)
+langchain-firecrawl>=0.1.0
+langchain-tavily>=0.2.0
+langchain-exa>=0.2.0
 
 
 # Multi-Agent Workflow Engine (LangGraph)
@@ -46,6 +51,9 @@ arxiv>=2.1.0
 
 # HTTP client (for downloading files in ingestion)
 httpx>=0.27.0
+
+# AWS S3 (chat image persistence across turns)
+boto3>=1.34.0
 
 # Auth
 python-jose[cryptography]>=3.3.0

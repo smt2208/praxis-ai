@@ -3,6 +3,7 @@ app/db/users.py
 
 User account CRUD and email verification queries.
 """
+from datetime import datetime
 import asyncpg
 
 
@@ -65,7 +66,7 @@ async def verify_email_token(pool: asyncpg.Pool, token: str) -> bool:
 
 
 async def set_password_reset_token(
-    pool: asyncpg.Pool, email: str, token: str, expires_at
+    pool: asyncpg.Pool, email: str, token: str, expires_at: datetime
 ) -> bool:
     """
     Store a password reset token and expiry on the user row.
@@ -115,14 +116,6 @@ async def reset_user_password(
         new_hashed_password, token,
     )
     return result == "UPDATE 1"
-
-
-async def update_full_name(pool: asyncpg.Pool, user_id: str, full_name: str) -> None:
-    """Update the user's display name."""
-    await pool.execute(
-        "UPDATE users SET full_name = $1 WHERE id = $2",
-        full_name or None, user_id,
-    )
 
 
 async def update_user_profile(

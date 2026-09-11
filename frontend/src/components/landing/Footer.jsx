@@ -1,5 +1,4 @@
 import React from 'react';
-import { Cpu } from 'lucide-react';
 
 export const Footer = () => {
   return (

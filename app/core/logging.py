@@ -77,14 +77,15 @@ class PraxisFormatter(logging.Formatter):
         if record.exc_info:
             exc_text = "\n" + self.formatException(record.exc_info)
 
+        request_id = getattr(record, "request_id", "-")
         if self.use_colour:
             colour = _LEVEL_COLOURS.get(level, "")
             level_str = f"{colour}{_BOLD}{level:<8}{_RESET}"
-            rid = f"\033[90m[{record.request_id}]{_RESET}"
+            rid = f"\033[90m[{request_id}]{_RESET}"
             name_str = f"\033[90m{name}{_RESET}"
             return f"{ts} {level_str} {rid} {name_str}: {msg}{exc_text}"
         else:
-            return f"{ts} {level:<8} [{record.request_id}] {name}: {msg}{exc_text}"
+            return f"{ts} {level:<8} [{request_id}] {name}: {msg}{exc_text}"
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +99,8 @@ def configure_logging(log_level: str | None = None) -> None:
     Reads LOG_LEVEL from environment (default: INFO).
     Auto-detects whether to use colour output based on TTY / NO_COLOR env var.
     """
-    level_name = (log_level or os.getenv("LOG_LEVEL", "INFO")).upper()
+    raw_level = log_level or os.getenv("LOG_LEVEL") or "INFO"
+    level_name = raw_level.upper()
     level = getattr(logging, level_name, logging.INFO)
 
     # Colour: on when stdout is a TTY and NO_COLOR is not set

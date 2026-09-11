@@ -8,6 +8,7 @@ Conversation management endpoints:
   GET    /api/v1/conversations/{id}/documents      → list ingested documents
   DELETE /api/v1/conversations/{id}                → delete conversation and related vector data
 """
+import asyncio
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -22,6 +23,7 @@ from app.schemas import (
     ConversationListItem, ConversationListResponse,
     MessageResponse,
 )
+from app.services.storage import delete_conversation_s3_images
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["Conversations"])
 
@@ -68,7 +70,19 @@ async def get_messages(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
     rows = await get_history(pool, conversation_id, limit=50)
-    return [MessageResponse(role=r["role"], content=r["content"]) for r in rows]
+    result = []
+    for r in rows:
+        meta = r.get("metadata") or {}
+        imgs = meta.get("image_urls") or []
+        result.append(
+            MessageResponse(
+                role=r["role"],
+                content=r["content"],
+                images=imgs,
+                metadata=meta,
+            )
+        )
+    return result
 
 
 @router.get("/{conversation_id}/documents", response_model=list[str])
@@ -101,8 +115,9 @@ async def delete_conv(
     if not owns:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    # Purge Qdrant vector chunks first — so they're never left orphaned if Postgres succeeds.
+    # Purge Qdrant vector chunks and S3 images first — so they're never left orphaned if Postgres succeeds.
     # Errors inside are caught/logged and won't block the user.
     await delete_conversation_qdrant_chunks(conversation_id)
+    await asyncio.to_thread(delete_conversation_s3_images, conversation_id)
     await delete_conversation(pool, conversation_id, current_user["id"])
 

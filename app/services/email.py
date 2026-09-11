@@ -28,9 +28,9 @@ def send_verification_email(to_email: str, token: str) -> None:
     verify_url = f"{settings.app_base_url}/verify-email?token={token}"
 
     if not settings.resend_api_key:
-        # No API key configured — print link so dev can verify manually
+        masked_token = token[:4] + "..." + token[-4:] if len(token) > 8 else "[REDACTED]"
         logger.warning(
-            f"[email] RESEND_API_KEY not set. Verification link for {to_email}:\n{verify_url}"
+            f"[email] RESEND_API_KEY not set. Verification link generated for {to_email}: {settings.app_base_url}/verify-email?token={masked_token}"
         )
         return
 
@@ -78,8 +78,9 @@ def send_password_reset_email(to_email: str, token: str) -> None:
     reset_url = f"{settings.app_base_url}/reset-password?token={token}"
 
     if not settings.resend_api_key:
+        masked_token = token[:4] + "..." + token[-4:] if len(token) > 8 else "[REDACTED]"
         logger.warning(
-            f"[email] RESEND_API_KEY not set. Password reset link for {to_email}:\n{reset_url}"
+            f"[email] RESEND_API_KEY not set. Password reset link generated for {to_email}: {settings.app_base_url}/reset-password?token={masked_token}"
         )
         return
 

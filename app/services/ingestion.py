@@ -17,8 +17,12 @@ import logging
 import tempfile
 import asyncio
 from pathlib import Path
+import ipaddress
+import socket
+from urllib.parse import urlparse, urljoin
 
 import httpx
+from pydantic import SecretStr
 from langsmith import traceable
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -34,27 +38,88 @@ settings = get_settings()
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 
 
+def _validate_safe_url(url: str) -> None:
+    """
+    Validate that a URL is safe for remote ingestion.
+    Prevents SSRF attacks against loopback, private subnets, and cloud metadata (169.254.169.254).
+    """
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in ("http", "https"):
+        raise ValueError("Only HTTP and HTTPS URLs are supported.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: missing hostname.")
+
+    try:
+        addr_info = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        raise ValueError(f"Could not resolve host '{hostname}': {exc}")
+
+    for _, _, _, _, sockaddr in addr_info:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or str(ip) == "169.254.169.254"
+        ):
+            raise ValueError(f"Access to private or local network address ({ip_str}) is forbidden.")
+
+
 # --- Step 1: Download file from URL ------------------------------------
 
 async def download_file(url: str) -> Path:
-    """Download a remote file to a temp path. Returns the local path."""
-    suffix = Path(url.split("?")[0]).suffix or ".pdf"
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    async with httpx.AsyncClient(timeout=60) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-            if content_type.startswith("text/html") or content_type.startswith("application/xhtml+xml"):
-                raise ValueError(f"Unsupported content type: {content_type}")
+    """Download a remote file to a temp path with SSRF protection. Returns the local path."""
+    current_url = url.strip()
+    _validate_safe_url(current_url)
 
-            downloaded = 0
-            async for chunk in response.aiter_bytes():
-                downloaded += len(chunk)
-                if downloaded > MAX_DOWNLOAD_BYTES:
-                    raise ValueError("Remote file is too large to ingest safely.")
-                tmp.write(chunk)
-    tmp.close()
-    return Path(tmp.name)
+    suffix = Path(current_url.split("?")[0]).suffix or ".pdf"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=False) as client:
+            # Safely handle up to 3 redirects while validating each target IP
+            for _ in range(3):
+                async with client.stream("GET", current_url) as response:
+                    if response.is_redirect:
+                        location = response.headers.get("location")
+                        if not location:
+                            raise ValueError("Redirect received without Location header.")
+                        current_url = urljoin(current_url, location)
+                        _validate_safe_url(current_url)
+                        continue
+
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+                    if content_type.startswith("text/html") or content_type.startswith("application/xhtml+xml"):
+                        raise ValueError(f"Unsupported content type: {content_type}")
+
+                    downloaded = 0
+                    async for chunk in response.aiter_bytes():
+                        downloaded += len(chunk)
+                        if downloaded > MAX_DOWNLOAD_BYTES:
+                            raise ValueError("Remote file is too large to ingest safely.")
+                        tmp.write(chunk)
+                    break
+            else:
+                raise ValueError("Too many redirects while fetching document.")
+        tmp.close()
+        return Path(tmp.name)
+    except Exception:
+        tmp.close()
+        if os.path.exists(tmp.name):
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+        raise
 
 
 # --- Step 2a: Fast local extraction (no API call) ----------------------
@@ -194,12 +259,12 @@ def store_documents(docs: list[Document], collection_name: str) -> int:
         documents=docs,
         embedding=OpenAIEmbeddings(
             model="text-embedding-3-small",
-            api_key=settings.openai_api_key,
+            api_key=SecretStr(settings.openai_api_key),
         ),
         sparse_embedding=FastEmbedSparse(model_name="Qdrant/bm25"),
         collection_name=collection_name,
         url=settings.qdrant_url,
-        api_key=settings.qdrant_api_key,
+        api_key=settings.qdrant_api_key or None,
         retrieval_mode=RetrievalMode.HYBRID,
         vector_name="dense",
         sparse_vector_name="sparse",

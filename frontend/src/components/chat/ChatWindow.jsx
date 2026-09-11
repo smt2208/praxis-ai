@@ -85,7 +85,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     ingesting, uploadingFileName,
     activeFiles, setActiveFiles,
     fileInputRef,
-    handleQuickFileSelect, removeFile,
+    handleQuickFileSelect,
   } = useFileUpload({ ensureActiveConversation, setError, onRefreshConversations });
 
   // Auto-open the attachments panel whenever a doc finishes ingesting
@@ -155,7 +155,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
           api.getDocuments(conversationId).catch(() => []),
         ]);
         if (cancelled) return;
-        setMessages(history);
+        setMessages(Array.isArray(history) ? history : (history?.messages || []));
         if (Array.isArray(docs)) setActiveFiles(docs.map((f) => ({ name: f })));
       } catch {
         if (!cancelled) setError('Failed to load message history.');
@@ -173,7 +173,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
     if (!loadingHistory && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [loadingHistory, conversationId]);
+  }, [loadingHistory, conversationId, messages.length]);
 
   // ── Send ────────────────────────────────────────────────────────────────
 
@@ -250,7 +250,7 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
             </div>
 
           ) : (
-            messages.map((msg, idx) => <MessageItem key={idx} message={msg} />)
+            messages.map((msg, idx) => <MessageItem key={msg.id || idx} message={msg} />)
           )}
 
           {/* Thinking indicator while waiting for first token */}
@@ -454,7 +454,6 @@ export const ChatWindow = ({ conversationId, activeTitle, onRefreshConversations
         sentImages={sentImages}
         ingesting={ingesting}
         uploadingFileName={uploadingFileName}
-        onRemoveFile={removeFile}
       />
     </div>
   );

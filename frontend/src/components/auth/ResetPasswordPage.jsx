@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, CheckCircle, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../services/api';
 
 /**

@@ -6,7 +6,7 @@ Constructs history summaries, document context gates, image context, and user pr
 """
 
 
-def format_history(history: list, last_n: int = 4) -> str:
+def format_history(history: list, last_n: int = 8, max_chars_per_msg: int = 500) -> str:
     """
     Format a list of messages (dicts or BaseMessage objects) into a compact
     text summary for injection into LLM prompts.
@@ -16,6 +16,8 @@ def format_history(history: list, last_n: int = 4) -> str:
                  or LangChain BaseMessage objects.
         last_n:  Number of most recent messages to include. Keeps prompts
                  focused and within token budgets.
+        max_chars_per_msg: Truncate individual messages beyond this length
+                          to prevent token budget blowouts from large responses.
 
     Returns:
         A newline-joined string like "USER: ...\nASSISTANT: ..."
@@ -32,8 +34,25 @@ def format_history(history: list, last_n: int = 4) -> str:
         else:
             role = getattr(m, "type", "human").upper()
             content = getattr(m, "content", "")
-        if content:
-            formatted.append(f"{role}: {content}")
+
+        # Handle LangChain multimodal content (list of content blocks)
+        if isinstance(content, list):
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+                elif isinstance(block, str):
+                    text_parts.append(block)
+            content = " ".join(text_parts)
+
+        if not content:
+            continue
+
+        # Truncate excessively long messages to keep router prompt within budget
+        if len(content) > max_chars_per_msg:
+            content = content[:max_chars_per_msg] + "…"
+
+        formatted.append(f"{role}: {content}")
 
     return "\n".join(formatted)
 
@@ -53,8 +72,16 @@ def build_doc_context(has_documents: bool) -> str:
     return "CONTEXT: No documents are attached to this conversation. Do NOT route to `knowledge_team`."
 
 
-def build_image_context(has_images: bool, count: int = 0) -> str:
-    """Build the image-awareness context string injected into the CEO router prompt."""
+def build_image_context(has_images: bool, count: int = 0, has_documents: bool = False) -> str:
+    """
+    Build the image-awareness context string injected into the CEO router prompt.
+    Includes multi-modal guidance when both images and documents are present.
+    """
+    if has_images and has_documents:
+        return (
+            f"IMAGE CONTEXT: The user has attached {count} image(s) and documents are uploaded in this conversation. "
+            "Route to `vision_agent`. The vision agent will receive document context to answer questions referencing both."
+        )
     if has_images:
         return (
             f"IMAGE CONTEXT: The user has attached {count} image(s) to this message. "
@@ -76,7 +103,7 @@ def build_user_profile_context(user_row: dict | None) -> str:
     if user_row.get("profession"):
         parts.append(f"Profession: {user_row['profession']}")
 
-    location_items = [user_row.get(k) for k in ("city", "state", "country") if user_row.get(k)]
+    location_items = [str(user_row[k]) for k in ("city", "state", "country") if user_row.get(k)]
     if location_items:
         parts.append(f"Location: {', '.join(location_items)}")
 
@@ -84,4 +111,3 @@ def build_user_profile_context(user_row: dict | None) -> str:
         return ""
 
     return "User Profile Details:\n" + "\n".join(f"- {p}" for p in parts)
-
